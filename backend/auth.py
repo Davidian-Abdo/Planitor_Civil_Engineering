@@ -9,7 +9,7 @@ import time
 
 # Backend imports
 from backend.db_models import UserDB, LoginAttemptDB
-from backend.database import SessionLocal, get_db_session, LoginAttemptDB
+from backend.database import SessionLocal, get_db_session
 
 logger = logging.getLogger(__name__)
 
