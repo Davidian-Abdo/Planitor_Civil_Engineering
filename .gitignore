@@ -1,0 +1,138 @@
+# --------------------------
+# Python & Packages
+# --------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --------------------------
+# Virtual environments
+# --------------------------
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# --------------------------
+# Database files
+# --------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# --------------------------
+# Application data directories (keep structure)
+# --------------------------
+outputs/**
+backups/**
+logs/**
+templates/*.xlsx
+templates/*.xls
+!outputs/.gitkeep
+!backups/.gitkeep
+!logs/.gitkeep
+!templates/.gitkeep
+
+# --------------------------
+# Environment variables
+# --------------------------
+.env
+.env.local
+.env.production
+.env.development
+streamlit-secrets.toml
+
+# --------------------------
+# IDE / Editor
+# --------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --------------------------
+# OS
+# --------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.lnk
+
+# --------------------------
+# Streamlit
+# --------------------------
+.streamlit/
+
+# --------------------------
+# Docker
+# --------------------------
+docker-compose.override.yml
+.dockerignore
+
+# --------------------------
+# Temporary files
+# --------------------------
+*.tmp
+*.temp
+*.log.tmp
+*.log
+
+# --------------------------
+# Test coverage
+# --------------------------
+htmlcov/
+.coverage
+.coverage.*
+.coverage*
+.pytest_cache/
+
+# --------------------------
+# Jupyter
+# --------------------------
+.ipynb_checkpoints
+
+# --------------------------
+# Excel / CSV / PDF / HTML / Backups
+# --------------------------
+*.xlsx
+*.xls
+*.csv
+*.html
+*.pdf
+*.bak
+*.backup
+
+# --------------------------
+# Local development / sensitive files
+# --------------------------
+local_settings.py
+instance/
