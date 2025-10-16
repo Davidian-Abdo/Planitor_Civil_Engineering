@@ -1,4 +1,4 @@
-
+import streamlit as st
 
 def inject_ui_styles():
     """Inject professional UI styles"""
