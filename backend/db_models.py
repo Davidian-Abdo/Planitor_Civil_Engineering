@@ -9,7 +9,8 @@ Base = declarative_base()
 
 # Constants for validation
 VALID_ROLES = ['admin', 'manager', 'worker', 'viewer']
-VALID_RESOURCE_TYPES = ['worker', 'equipment', 'hybrid']
+VALID_TASK_TYPES = ['worker', 'equipment','hybrid']
+VALID_RESOURCE_TYPES = ['BétonArmée', Férailleur', 'ConstMéttalique','plaquiste','Etanchiété','Revetement','peinture']
 VALID_DISCIPLINES = ['Préliminaire', 'Terrassement', 'Fondations', 'Structure', 'VRD', 'Finitions']
 VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']
 
@@ -78,6 +79,7 @@ class BaseTaskDB(Base):
     # Table constraints and indexes
     __table_args__ = (
         CheckConstraint(f"resource_type IN ({', '.join(repr(r) for r in VALID_RESOURCE_TYPES)})", name="valid_resource_type"),
+         CheckConstraint(f"task_type IN ({', '.join(repr(r) for r in VALID_TASK_TYPES)})", name="valid_task_type"),
         CheckConstraint(f"discipline IN ({', '.join(repr(d) for d in VALID_DISCIPLINES)})", name="valid_discipline"),
         CheckConstraint("base_duration > 0", name="positive_duration"),
         CheckConstraint("min_crews_needed >= 0", name="non_negative_crews"),
