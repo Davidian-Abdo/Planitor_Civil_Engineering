@@ -293,6 +293,44 @@ def generate_schedule_ui():
         else:
             missing = [n for n,s in upload_status.items() if not s]
             create_info_card("Action Required", f"Upload files: {', '.join(missing)}","⚠️","warning")
+            
+        if st.session_state.get("schedule_generated", False):
+            st.markdown("---")
+            st.subheader("📂 Download Results")
+            
+            # Excel files
+            excel_files = [f for f in st.session_state["generated_files"] if f.endswith(".xlsx")]
+            if excel_files:
+                st.markdown("#### 📊 Excel Reports")
+                cols = st.columns(3)
+                for i, file_path in enumerate(excel_files):
+                    if os.path.exists(file_path):
+                        with cols[i % 3]:
+                            with open(file_path, "rb") as f:
+                                st.download_button(
+                                    f"📥 {os.path.basename(file_path)}",
+                                    f,
+                                    file_name=os.path.basename(file_path),
+                                    use_container_width=True,
+                                    key=f"excel_download_{i}"
+                                )
+            
+            # Gantt chart
+            gantt_files = [f for f in st.session_state["generated_files"] if f.endswith(".html")]
+            if gantt_files:
+                st.markdown("#### 📈 Interactive Gantt Chart")
+                gantt_file = gantt_files[0]
+                if os.path.exists(gantt_file):
+                    with open(gantt_file, "rb") as f:
+                        st.download_button(
+                            "📊 Download Interactive Gantt Chart",
+                            f,
+                            file_name="project_gantt_chart.html",
+                            use_container_width=True,
+                            type="secondary",
+                            key="gantt_download"
+                        )
+
 
     # ------------------ TAB 5: Manage Tasks ------------------
     with tab5:
