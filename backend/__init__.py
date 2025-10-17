@@ -15,8 +15,8 @@ from backend.auth import AuthManager, require_role, hash_password, verify_passwo
 from backend.init_backend import init_backend, check_backend_health
 
 # Export logger
-import logging
-logger = logging.getLogger(__name__)
+from utils.logger import get_logger
+logger = get_logger(__name__)
 
 __all__ = [
     # Database
