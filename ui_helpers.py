@@ -105,7 +105,7 @@ def render_upload_section(title, key_suffix, accepted_types=["xlsx"]):
             </div>
             """, unsafe_allow_html=True)
             
-            if file_size < 0.1:  # 100KB
+            if file_size < 0.01:  # 100KB
                 st.warning("⚠️ File size is very small. Please verify the content.")
             elif file_size > 50:
                 st.error("❌ File size exceeds 50MB limit.")
