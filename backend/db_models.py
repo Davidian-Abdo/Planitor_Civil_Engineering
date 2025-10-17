@@ -10,7 +10,7 @@ Base = declarative_base()
 # Constants for validation
 VALID_ROLES = ['admin', 'manager', 'worker', 'viewer']
 VALID_TASK_TYPES = ['worker', 'equipment','hybrid']
-VALID_RESOURCE_TYPES = ['BétonArmée', Férailleur', 'ConstMéttalique','plaquiste','Etanchiété','Revetement','peinture']
+VALID_RESOURCE_TYPES = ['BétonArmée', 'Férailleur', 'ConstMéttalique','plaquiste','Etanchiété','Revetement','peinture']
 VALID_DISCIPLINES = ['Préliminaire', 'Terrassement', 'Fondations', 'Structure', 'VRD', 'Finitions']
 VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']
 
