@@ -81,7 +81,7 @@ class BaseTaskDB(Base):
         CheckConstraint(f"resource_type IN ({', '.join(repr(r) for r in VALID_RESOURCE_TYPES)})", name="valid_resource_type"),
          CheckConstraint(f"task_type IN ({', '.join(repr(r) for r in VALID_TASK_TYPES)})", name="valid_task_type"),
         CheckConstraint(f"discipline IN ({', '.join(repr(d) for d in VALID_DISCIPLINES)})", name="valid_discipline"),
-        CheckConstraint("base_duration > 0", name="positive_duration"),
+        CheckConstraint("base_duration >= 0", name="positive_duration"),
         CheckConstraint("min_crews_needed >= 0", name="non_negative_crews"),
         CheckConstraint("delay >= 0", name="non_negative_delay"),
         Index('idx_task_discipline_included', 'discipline', 'included'),
