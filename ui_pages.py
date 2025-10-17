@@ -182,51 +182,45 @@ def generate_schedule_ui():
                     
             except Exception as e:
                 st.error(f"❌ Failed to generate templates: {e}")
+        if st.session_state.get("templates_ready", False):
+            st.markdown("---")
+            st.subheader("⬇️ Download Templates")
 
-
-
-            
-
-             if st.session_state.get("templates_ready", False):
-        st.markdown("---")
-        st.subheader("⬇️ Download Templates")
-
-        templates_info = [
+            templates_info = [
             ("📏 Quantity Template", "qty_file", "Defines task quantities across zones/floors"),
             ("👷 Worker Template", "worker_file", "Specifies crew sizes and productivity rates"),
             ("🚜 Equipment Template", "equip_file", "Details machine counts and operational rates")
-        ]
+               ]
 
-        for icon, key, description in templates_info:
-            path_or_buf = st.session_state.get(key)
+            for icon, key, description in templates_info:
+                path_or_buf = st.session_state.get(key)
+                if not path_or_buf:
+                    continue
 
-            if not path_or_buf:
-                continue
+                with st.container():
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.markdown(f"**{icon} {description}**")
 
-            with st.container():
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.markdown(f"**{icon} {description}**")
-
-                with col2:
-                    # Handle both file paths and in-memory BytesIO objects
-                    if isinstance(path_or_buf, str) and os.path.exists(path_or_buf):
-                        with open(path_or_buf, "rb") as f:
+                    with col2:
+                        # Handle both file paths and in-memory BytesIO objects
+                        if isinstance(path_or_buf, str) and os.path.exists(path_or_buf):
+                            with open(path_or_buf, "rb") as f:
+                                st.download_button(
+                                     "Download",
+                                    f,
+                                    file_name=os.path.basename(path_or_buf),
+                                    use_container_width=True,
+                                    key=f"download_{key}"
+                            )
+                        elif hasattr(path_or_buf, "getvalue"):
                             st.download_button(
                                 "Download",
-                                f,
-                                file_name=os.path.basename(path_or_buf),
+                                data=path_or_buf.getvalue(),
+                                file_name=f"{key.replace('_file', '')}.xlsx",
                                 use_container_width=True,
                                 key=f"download_{key}"
-                            )
-                    elif hasattr(path_or_buf, "getvalue"):
-                        st.download_button(
-                            "Download",
-                            data=path_or_buf.getvalue(),
-                            file_name=f"{key.replace('_file', '')}.xlsx",
-                            use_container_width=True,
-                            key=f"download_{key}"
-                        )
+                               )
 
 
     
