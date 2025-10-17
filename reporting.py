@@ -739,7 +739,7 @@ class BasicReporter:
     # 3️⃣ CPM Export (unchanged)
     # ---------------------------------------------------------
     def export_cpm(self, path):
-        from logic import CPMAnalyzer
+        from scheduling_engin import CPMAnalyzer
         durations = {t.id: max(1, (self.schedule[t.id][1] - self.schedule[t.id][0]).days)
                      for t in self.tasks if t.id in self.schedule}
         dependencies = {t.id: t.predecessors for t in self.tasks}
