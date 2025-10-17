@@ -78,7 +78,7 @@ def create_info_card(title, content, icon="ℹ️", card_type="info"):
     </div>
     """, unsafe_allow_html=True)
 
-def render_upload_section(title, key_suffix, accepted_types=["xlsx"]):
+def render_upload_section(title, key_suffix, accepted_types=["xlsx","xls","csv"]):
     """Enhanced file upload section"""
     with st.container():
         st.markdown(f"**{title}**")
@@ -105,8 +105,11 @@ def render_upload_section(title, key_suffix, accepted_types=["xlsx"]):
             </div>
             """, unsafe_allow_html=True)
             
-            if file_size < 0.01:  # 100KB
-                st.warning("⚠️ File size is very small. Please verify the content.")
-            elif file_size > 50:
+            # Only keep the upper limit check
+            if file_size > 50:
                 st.error("❌ File size exceeds 50MB limit.")
-                
+                return None
+            
+            return uploaded_file  # ✅ CRITICAL: Return the file object
+        
+        return None
