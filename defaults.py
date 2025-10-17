@@ -48,7 +48,7 @@ workers = {
         max_crews={"9.2": 10}
     ),
 
-    "Maçonnerie": WorkerResource(
+    "plaquiste": WorkerResource(
         "Maçonnerie", count=84, hourly_rate=40,
         productivity_rates={"5.1": 10},
         skills=["Maçonnerie"],
