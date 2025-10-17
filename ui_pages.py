@@ -11,6 +11,7 @@ from scheduling_engin import run_schedule, analyze_project_progress
 from ui_helpers import inject_ui_styles, create_metric_row, create_info_card, render_upload_section
 from helpers import generate_quantity_template, generate_worker_template, generate_equipment_template,parse_quantity_excel, parse_worker_excel, parse_equipment_excel
 from reporting import  generate_interactive_gantt
+from defaults import workers,eauipment, BASE_TASKS
 
 # ------------------------- LOGIN / LOGOUT -------------------------
 def login_ui():
@@ -166,9 +167,9 @@ def generate_schedule_ui():
                         base_tasks = session.query(BaseTaskDB).filter(BaseTaskDB.included==True).all()
                         tasks_dict = {t.name: t for t in base_tasks}
 
-                    qty_file = generate_quantity_template(tasks_dict, st.session_state.get("zones_floors", {}))
-                    worker_file = generate_worker_template({})
-                    equip_file = generate_equipment_template({})
+                    qty_file = generate_quantity_template(BASE_TASKS, st.session_state.get("zones_floors", {}))
+                    worker_file = generate_worker_template(workers)
+                    equip_file = generate_equipment_template(equipment)
 
                     st.session_state.update({
                         "templates_ready": True,
@@ -178,6 +179,7 @@ def generate_schedule_ui():
                     })
                     st.success("✅ All templates generated successfully!")
                     st.balloons()
+                    
             except Exception as e:
                 st.error(f"❌ Failed to generate templates: {e}")
 
