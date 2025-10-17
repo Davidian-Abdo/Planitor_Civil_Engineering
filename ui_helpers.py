@@ -106,7 +106,10 @@ def render_upload_section(title, key_suffix, accepted_types=["xlsx","xls","csv"]
             """, unsafe_allow_html=True)
             
             # Only keep the upper limit check
-            if file_size > 50:
+            if file_size < 0.005:
+                st.error("❌ File size exceeds 50MB limit.")
+                return None
+            if file_size > 30:
                 st.error("❌ File size exceeds 50MB limit.")
                 return None
             
