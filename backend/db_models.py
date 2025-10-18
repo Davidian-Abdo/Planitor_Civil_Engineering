@@ -1,3 +1,6 @@
+
+
+
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Float, ForeignKey, Text, JSON,
     CheckConstraint, Index, UniqueConstraint
@@ -9,15 +12,10 @@ Base = declarative_base()
 
 # Constants for validation
 VALID_ROLES = ['admin', 'manager', 'worker', 'viewer']
-VALID_TASK_TYPES = ['worker', 'equipment','hybrid']
-VALID_RESOURCE_TYPES = ['BétonArmée', 'Férailleur', 'ConstMéttalique','plaquiste','Etanchiété','Revetement','peinture']
+VALID_TASK_TYPES = ['worker', 'equipment', 'hybrid']
+VALID_RESOURCE_TYPES = ['BétonArmée', 'Férailleur', 'ConstMéttalique', 'plaquiste', 'Etanchiété', 'Revetement', 'peinture']
 VALID_DISCIPLINES = ['Préliminaire', 'Terrassement', 'Fondations', 'Structure', 'VRD', 'Finitions']
 VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']
-
-
-Base = declarative_base()
-
-
 
 class LoginAttemptDB(Base):
     __tablename__ = "login_attempts"
@@ -50,18 +48,20 @@ class UserDB(Base):
         CheckConstraint("char_length(username) >= 3", name="username_min_length"),
     )
 
-    # relationships
-    tasks_created = relationship("BaseTaskDB", back_populates="creator")
+    # FIXED: Relationships - UserBaseTaskDB is now the main task model
+    tasks_created = relationship("UserBaseTaskDB", back_populates="creator")
     schedules = relationship("ScheduleDB", back_populates="user")
     monitorings = relationship("MonitoringDB", back_populates="user")
 
     def __repr__(self):
         return f"<User {self.username} ({self.role})>"
 
+# FIXED: This is now your MAIN task model (replaces BaseTaskDB)
 class UserBaseTaskDB(Base):
-    __tablename__ = "base_tasks"
+    __tablename__ = "user_base_tasks"  # ✅ CORRECT: Separate table for user tasks
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # ✅ Link to user
     name = Column(String(100), nullable=False, index=True)
     discipline = Column(String(50), nullable=False)
     resource_type = Column(String(20), nullable=False)
@@ -75,25 +75,23 @@ class UserBaseTaskDB(Base):
     delay = Column(Integer, default=0)
     
     # Cross-floor configuration
-    cross_floor_dependencies = Column(JSON, default=list)
+    cross_floor_dependencies = Column(JSON, default=lambda: [])
     applies_to_floors = Column(String(20), default="auto")
     
     # System constraints
-    max_duration = Column(Float, default=365.0)        # Maximum allowed duration
-    max_crews = Column(Integer, default=50)   
+    max_duration = Column(Float, default=365.0)
+    max_crews = Column(Integer, default=50)
 
-    created_by_user = Column(Boolean, default=False)
+    # User tracking
+    created_by_user = Column(Boolean, default=True)  # ✅ Always True for user tasks
     creator_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-
-    
 
     # Table constraints and indexes
     __table_args__ = (
         CheckConstraint(f"resource_type IN ({', '.join(repr(r) for r in VALID_RESOURCE_TYPES)})", name="valid_resource_type"),
-         CheckConstraint(f"task_type IN ({', '.join(repr(r) for r in VALID_TASK_TYPES)})", name="valid_task_type"),
+        CheckConstraint(f"task_type IN ({', '.join(repr(r) for r in VALID_TASK_TYPES)})", name="valid_task_type"),
         CheckConstraint(f"discipline IN ({', '.join(repr(d) for d in VALID_DISCIPLINES)})", name="valid_discipline"),
         CheckConstraint("base_duration >= 0", name="positive_duration"),
         CheckConstraint("min_crews_needed >= 0", name="non_negative_crews"),
@@ -101,39 +99,41 @@ class UserBaseTaskDB(Base):
         Index('idx_task_discipline_included', 'discipline', 'included'),
         Index('idx_task_creator', 'creator_id', 'created_at'),
         Index('idx_task_resource_type', 'resource_type', 'included'),
-        UniqueConstraint('name', 'discipline', name='unique_task_per_discipline'),
+        Index('idx_user_tasks_user', 'user_id', 'included'),  # ✅ Added user index
+        UniqueConstraint('user_id', 'name', 'discipline', name='unique_user_task_per_discipline'),  # ✅ User-specific uniqueness
     )
 
-    # relationship
-    creator = relationship("UserDB", back_populates="tasks_created")
+    # FIXED: Relationships
+    creator = relationship("UserDB", back_populates="tasks_created", foreign_keys=[creator_id])
+    user = relationship("UserDB", foreign_keys=[user_id])  # ✅ Link to user owner
 
     def __repr__(self):
-        return f"<Task {self.name} ({self.discipline})>"
-
+        return f"<UserTask {self.name} ({self.discipline})>"
 
 class DisciplineZoneConfigDB(Base):
-    __tablename__ = "discipline_zone_config"  # <--- REQUIRED
+    __tablename__ = "discipline_zone_config"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     project_id = Column(String(50), nullable=False, index=True)
     discipline = Column(String(50), nullable=False)
     strategy = Column(String(50), default="group_sequential")
-    zone_groups = Column(JSON, nullable=False, default=list)
+    zone_groups = Column(JSON, nullable=False, default=lambda: [])
 
     def __repr__(self):
         return f"<DisciplineZoneConfig project={self.project_id} discipline={self.discipline}>"
 
+# FIXED: ScheduleDB now references UserBaseTaskDB
 class ScheduleDB(Base):
     __tablename__ = "schedules"
 
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    project_id = Column(String(50), nullable=False, index=True)  # Unique project identifier
+    project_id = Column(String(50), nullable=False, index=True)
     project_name = Column(String(200), nullable=False)
     zone = Column(String(50), nullable=False)
     floor = Column(Integer, nullable=False)
-    task_id = Column(Integer, ForeignKey("base_tasks.id"), nullable=False)
-    task_name = Column(String(100), nullable=False)  # Denormalized for performance
+    task_id = Column(Integer, ForeignKey("user_base_tasks.id"), nullable=False)  # ✅ FIXED: Reference user_base_tasks
+    task_name = Column(String(100), nullable=False)
     start_date = Column(DateTime, nullable=False)
     end_date = Column(DateTime, nullable=False)
     actual_start_date = Column(DateTime, nullable=True)
@@ -156,9 +156,9 @@ class ScheduleDB(Base):
         Index('idx_schedule_status', 'status', 'progress'),
     )
 
-    # relationships
+    # FIXED: Relationships
     user = relationship("UserDB", back_populates="schedules")
-    task = relationship("BaseTaskDB")
+    task = relationship("UserBaseTaskDB")  # ✅ FIXED: Reference UserBaseTaskDB
 
     def __repr__(self):
         return f"<Schedule {self.task_name} - {self.project_name}>"
