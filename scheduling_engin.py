@@ -15,7 +15,7 @@ import streamlit as st
 import plotly.express as px
 from io import BytesIO
 from models import Task,BaseTask, WorkerResource, EquipmentResource
-from defaults import workers, equipment, BASE_TASKS, cross_floor_links, acceleration, SHIFT_CONFIG
+from defaults import workers, equipment, BASE_TASKS, cross_floor_links, acceleration, SHIFT_CONFIG, disciplines
 
 from helpers import (
     ResourceAllocationList,AdvancedResourceManager,EquipmentResourceManager,
