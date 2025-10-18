@@ -10,12 +10,28 @@ from models import DisciplineZoneConfig
 
 
 
-
-
-
-
-
-def cross_floor_dependency_ui(base_task):
+def generate_user_cross_floor_dependencies(base_task, zone, floor, task_ids, base_by_id):
+    dependencies = []
+    
+    # PROCESS USER-CONFIGURED CROSS-FLOOR DEPENDENCIES
+    user_deps = getattr(base_task, 'cross_floor_dependencies', []) or []
+    
+    for dep_config in user_deps:
+        pred_id = dep_config.get('task_id')        # Which task to depend on
+        floor_offset = dep_config.get('floor_offset', -1)  # Floor relationship
+        
+        pred_base = base_by_id.get(pred_id)
+        if pred_base and getattr(pred_base, "included", True):
+            pred_floor = floor + floor_offset  # Calculate target floor
+            
+            # Check if predecessor can exist on this floor
+            if is_valid_floor_for_task(pred_base, pred_floor, zone):
+                dependency_id = f"{pred_id}-F{pred_floor}-{zone}"
+                if dependency_id in task_ids:
+                    dependencies.append(dependency_id)
+    
+    return dependencies
+def cross_floor_dependency_ui(base_task): 
     """Simple UI for configuring cross-floor dependencies"""
     
     st.markdown("### 🔄 Cross-Floor Dependencies")
