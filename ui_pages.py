@@ -46,7 +46,6 @@ def scheduling_page():
 def monitoring_page():
     monitor_project_ui()
 
-
 # ------------------------- MAIN PAGE ROUTER -------------------------
 def main_ui():
     login_ui()  # Sidebar login/logout
@@ -71,6 +70,195 @@ def main_ui():
         page_func()
     else:
         st.error("Page not available for your role.")
+
+
+
+
+# In ui_pages.py - Enhanced Tab 5
+def user_specific_task_management():
+    """Task management for individual users with constraints"""
+    
+    st.subheader("📝 Manage Your Task Library")
+    
+    # Get current user
+    current_user = st.session_state["user"]["username"]
+    user_role = st.session_state["user"]["role"]
+    
+    # Admin can see all users, others only see their own
+    if user_role == "admin":
+        st.info("👑 Admin View: You can manage all user task libraries")
+        all_users = get_all_users()
+        selected_user = st.selectbox("Select User to Manage:", all_users, index=all_users.index(current_user))
+        target_user = selected_user
+    else:
+        target_user = current_user
+        st.info(f"👤 Managing your personal task library")
+    
+    # Two-column layout
+    col_list, col_editor = st.columns([2, 3])
+    
+    with col_list:
+        show_user_task_list(target_user)
+    
+    with col_editor:
+        show_constrained_task_editor(target_user)
+
+def show_user_task_list(user_id):
+    """Show tasks for specific user with filtering"""
+    st.markdown("### 📋 Your Task Library")
+    
+    # Quick actions
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("➕ New Task", use_container_width=True):
+            st.session_state["creating_new_task"] = True
+    with col2:
+        if st.button("📥 Import from Template", use_container_width=True):
+            show_import_template_modal(user_id)
+    
+    # Filtering
+    search_term = st.text_input("🔍 Search your tasks...", placeholder="Search by name or discipline")
+    discipline_filter = st.multiselect("Filter by discipline:", disciplines, default=[])
+    
+    # Load user's tasks
+    with SessionLocal() as session:
+        user_tasks = session.query(UserBaseTaskDB).filter(
+            UserBaseTaskDB.user_id == user_id
+        ).order_by(UserBaseTaskDB.discipline, UserBaseTaskDB.name).all()
+        
+        # Apply filters
+        if search_term:
+            user_tasks = [t for t in user_tasks if search_term.lower() in t.name.lower()]
+        if discipline_filter:
+            user_tasks = [t for t in user_tasks if t.discipline in discipline_filter]
+        
+        # Display tasks
+        for task in user_tasks:
+            display_user_task_card(task, user_id)
+
+def show_constrained_task_editor(user_id):
+    """Task editor with constraint validation"""
+    editing_task_id = st.session_state.get("editing_task_id")
+    creating_new = st.session_state.get("creating_new_task", False)
+    
+    if not editing_task_id and not creating_new:
+        st.info("👈 Select a task from your library to edit, or create a new one")
+        return
+    
+    with SessionLocal() as session:
+        if editing_task_id:
+            task = session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.id == editing_task_id,
+                UserBaseTaskDB.user_id == user_id
+            ).first()
+            is_new = False
+        else:
+            task = UserBaseTaskDB(user_id=user_id)
+            is_new = True
+        
+        with st.form(f"task_form_{user_id}_{task.id if task.id else 'new'}"):
+            st.markdown("### ✏️ Task Editor with Validation")
+            
+            # Basic Information with Constraints
+            st.markdown("**📝 Basic Information**")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                task_name = st.text_input("Task Name", 
+                    value=task.name if task else "",
+                    max_chars=255,
+                    help="Descriptive name for the task"
+                )
+                
+                discipline = st.selectbox("Discipline", disciplines, 
+                    index=disciplines.index(task.discipline) if task and task.discipline else 0
+                )
+            
+            with col2:
+                resource_type = st.selectbox("Resource Type", ["worker", "equipment", "hybrid"],
+                    index=["worker", "equipment", "hybrid"].index(task.resource_type) if task and task.resource_type else 0
+                )
+                
+                # Duration with constraints
+                default_duration = constraint_manager.get_default_value("duration", discipline) or 1.0
+                min_duration = constraint_manager.constraints.get(f"duration_{discipline}") or constraint_manager.constraints.get("duration_global")
+                max_duration = constraint_manager.constraints.get(f"duration_{discipline}") or constraint_manager.constraints.get("duration_global")
+                
+                base_duration = st.number_input("Base Duration (days)", 
+                    min_value=float(min_duration.min_value) if min_duration else 0.1,
+                    max_value=float(max_duration.max_value) if max_duration else 365.0,
+                    value=task.base_duration if task and task.base_duration else default_duration,
+                    step=0.5,
+                    help=f"Allowed range: {min_duration.min_value if min_duration else 0.1} - {max_duration.max_value if max_duration else 365.0} days"
+                )
+            
+            # Crews with constraints
+            st.markdown("**👷 Resource Requirements**")
+            col1, col2 = st.columns(2)
+            with col1:
+                default_crews = constraint_manager.get_default_value("crews", discipline) or 1
+                min_crews = constraint_manager.constraints.get(f"crews_{discipline}") or constraint_manager.constraints.get("crews_global")
+                max_crews = constraint_manager.constraints.get(f"crews_{discipline}") or constraint_manager.constraints.get("crews_global")
+                
+                min_crews_needed = st.number_input("Minimum Crews", 
+                    min_value=int(min_crews.min_value) if min_crews else 1,
+                    max_value=int(max_crews.max_value) if max_crews else 50,
+                    value=task.min_crews_needed if task and task.min_crews_needed else default_crews,
+                    step=1,
+                    help=f"Allowed range: {min_crews.min_value if min_crews else 1} - {max_crews.max_value if max_crews else 50} crews"
+                )
+            
+            # Cross-floor configuration
+            st.markdown("**🔄 Cross-Floor Configuration**")
+            cross_floor_config = cross_floor_dependency_ui(task) if task else {}
+            
+            # Predecessors with constraint
+            st.markdown("**⏩ Predecessor Tasks**")
+            with SessionLocal() as inner_session:
+                user_tasks = inner_session.query(UserBaseTaskDB).filter(
+                    UserBaseTaskDB.user_id == user_id,
+                    UserBaseTaskDB.id != getattr(task, 'id', None)
+                ).all()
+                predecessor_options = [f"{t.name} ({t.discipline})" for t in user_tasks]
+                selected_predecessors = st.multiselect("Select predecessor tasks:", 
+                    predecessor_options,
+                    help="Maximum 10 predecessors allowed"
+                )
+            
+            # Form submission with validation
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.form_submit_button("💾 Save Task", use_container_width=True):
+                    # Prepare task data for validation
+                    task_data = {
+                        'base_duration': base_duration,
+                        'min_crews_needed': min_crews_needed,
+                        'predecessors': selected_predecessors
+                    }
+                    
+                    # Validate against constraints
+                    validation_errors = constraint_manager.validate_task_data(task_data, discipline)
+                    
+                    if validation_errors:
+                        for error in validation_errors:
+                            st.error(error)
+                    else:
+                        save_user_task(task, is_new, user_id, task_name, discipline, resource_type, 
+                                     base_duration, min_crews_needed, cross_floor_config, selected_predecessors)
+            
+            with col2:
+                if st.form_submit_button("❌ Cancel", use_container_width=True):
+                    st.session_state.pop("editing_task_id", None)
+                    st.session_state.pop("creating_new_task", None)
+                    st.rerun()
+
+
+
+
+
+
+
+
 
 # ------------------------- ACTUAL UI FUNCTIONS -------------------------
 def generate_schedule_ui():
