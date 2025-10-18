@@ -3,13 +3,7 @@ import streamlit as st
 
 # ui_helpers.py (new)
 import streamlit as st
-
-@dataclass
-class DisciplineZoneConfig:
-    """Holds zone grouping info per discipline"""
-    discipline: str
-    zone_groups: list  # List of lists of zone names [[zoneA, zoneB], [zoneC]]
-    strategy: str = "sequential"  # "sequential" or "fully_parallel"
+from models import DisciplineZoneConfig
 
 
 def render_discipline_zone_config(disciplines, zones, key_prefix="disc_zone_cfg"):
