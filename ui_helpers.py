@@ -1,10 +1,91 @@
 import streamlit as st
-
-
-# ui_helpers.py (new)
-import streamlit as st
+from defaults import disciplines
 from models import DisciplineZoneConfig
 
+
+def cross_floor_dependency_ui(base_task):
+    """Simple UI for configuring cross-floor dependencies"""
+    
+    st.markdown("### 🔄 Cross-Floor Dependencies")
+    st.info("Configure tasks from **other floors** that this task depends on")
+    
+    # Get current dependencies
+    current_deps = getattr(base_task, 'cross_floor_dependencies', []) or []
+    
+    # Display current dependencies
+    if current_deps:
+        st.markdown("**Current Cross-Floor Dependencies:**")
+        for i, dep in enumerate(current_deps):
+            col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+            with col1:
+                dep_task = get_task_by_id(dep['task_id'])
+                st.write(f"**{dep_task.name if dep_task else dep['task_id']}**")
+            with col2:
+                floor_text = get_floor_offset_text(dep['floor_offset'])
+                st.write(floor_text)
+            with col3:
+                st.write("🔗" if dep.get('required', True) else "⚡")
+            with col4:
+                if st.button("❌", key=f"remove_{i}"):
+                    remove_cross_floor_dependency(base_task, dep['task_id'])
+                    st.rerun()
+    
+    # Add new dependency
+    with st.expander("➕ Add Cross-Floor Dependency", expanded=len(current_deps) == 0):
+        col1, col2, col3 = st.columns([3, 2, 1])
+        
+        with col1:
+            available_tasks = get_available_dependency_tasks(base_task)
+            task_options = {f"{t.name} ({t.discipline})": t.id for t in available_tasks}
+            selected_task = st.selectbox(
+                "Task depends on:",
+                options=list(task_options.keys()),
+                key="new_dep_task"
+            )
+        
+        with col2:
+            floor_offset = st.selectbox(
+                "Floor relationship:",
+                options=[-2, -1, 1, 2],
+                format_func=lambda x: {
+                    -2: "📥 2 Floors Below",
+                    -1: "📥 Floor Below", 
+                    1: "📤 Floor Above",
+                    2: "📤 2 Floors Above"
+                }[x],
+                index=1,  # Default to "Floor Below"
+                key="new_dep_floor"
+            )
+        
+        with col3:
+            st.write("")  # Spacing
+            st.write("")  # Spacing
+            if st.button("Add", key="add_dep"):
+                if selected_task:
+                    task_id = task_options[selected_task]
+                    add_cross_floor_dependency(base_task, task_id, floor_offset)
+                    st.rerun()
+    
+    # Simple floor application override
+    st.markdown("### 🏢 Floor Application")
+    applies_to_floors = st.selectbox(
+        "Generate task for:",
+        options=["auto", "ground_only", "above_ground", "all_floors"],
+        format_func=lambda x: {
+            "auto": "🤖 Auto (use existing rules)",
+            "ground_only": "🌱 Ground floor only", 
+            "above_ground": "⬆️ Above ground only",
+            "all_floors": "🏢 All floors including ground"
+        }[x],
+        index=["auto", "ground_only", "above_ground", "all_floors"].index(
+            getattr(base_task, 'applies_to_floors', 'auto')
+        )
+    )
+    
+    return {
+        "cross_floor_dependencies": current_deps,
+        "applies_to_floors": applies_to_floors
+    }
 
 def render_discipline_zone_config(disciplines, zones, key_prefix="disc_zone_cfg"):
     """
