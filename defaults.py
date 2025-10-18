@@ -451,7 +451,7 @@ acceleration = {
     "Superstructure": {"factor": 1.0},
     "default": {"factor": 1.0},
 }
-desciplines=["Préliminaire","Terrassement","Fondations","Superstructure","SecondeOeuvre"]
+disciplines=["Préliminaire","Terrassement","Fondations","Superstructure","SecondeOeuvre"]
 cross_floor_links = {
     "2.1": ["1.2"],
     "4.1": ["4.7"],
