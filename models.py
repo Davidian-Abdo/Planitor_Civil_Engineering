@@ -3,6 +3,14 @@ from typing import List, Optional, Dict
 from datetime import datetime
 
 @dataclass
+class DisciplineZoneConfig:
+    """Holds zone grouping info per discipline"""
+    discipline: str
+    zone_groups: list  # List of lists of zone names [[zoneA, zoneB], [zoneC]]
+    strategy: str = "sequential"  # "sequential" or "fully_parallel"
+
+
+@dataclass
 class WorkerResource:
     name: str
     count: int
