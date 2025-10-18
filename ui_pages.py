@@ -279,7 +279,8 @@ def generate_schedule_ui():
                                 quantity_matrix=quantity_used,
                                 start_date=st.session_state.get("start_date"),
                                 workers_dict=workers_used,
-                                equipment_dict=equipment_used
+                                equipment_dict=equipment_used,
+                                discipline_zone_cfg=st.session_state.get("discipline_zone_cfg")
                             )
                         elif i==4:
                             st.session_state.update({
