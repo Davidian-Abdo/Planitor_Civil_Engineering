@@ -5,7 +5,7 @@ from backend.database import SessionLocal
 from backend.db_models import BaseTaskDB
 import pandas as pd
 import os, time
-
+from defaults import disciplines
 # Import your existing UI logic (keep these the same)
 from scheduling_engin import run_schedule, analyze_project_progress
 from ui_helpers import inject_ui_styles, create_metric_row, create_info_card, render_upload_section
@@ -140,6 +140,13 @@ def generate_schedule_ui():
             with col2:
                 st.metric("Start Date", start_date.strftime("%Y-%m-%d"))
 
+
+        with st.expander("🏢 zones sequencing", expanded=True):
+            st.subheader("⚙️ Discipline-Zone Configuration")
+            st.markdown( "Define which zones should be executed in parallel and which sequentially per discipline.")
+            discipline_zone_cfg = render_discipline_zone_config(disciplines, list(zones_floors.keys()))
+            st.session_state["discipline_zone_cfg"] = discipline_zone_cf
+        
         with st.expander("📝 Project Information", expanded=False):
             project_name = st.text_input("Project Name", value="My Construction Project")
             project_manager = st.text_input("Project Manager")
