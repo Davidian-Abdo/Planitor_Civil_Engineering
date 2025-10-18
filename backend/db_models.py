@@ -58,7 +58,7 @@ class UserDB(Base):
     def __repr__(self):
         return f"<User {self.username} ({self.role})>"
 
-class BaseTaskDB(Base):
+class UserBaseTaskDB(Base):
     __tablename__ = "base_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
