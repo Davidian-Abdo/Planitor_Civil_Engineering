@@ -2,7 +2,7 @@
 import streamlit as st
 from backend.auth import auth_manager, require_role, login, logout  # Updated imports
 from backend.database import SessionLocal
-from backend.db_models import BaseTaskDB
+from backend.db_models import BaseTaskDB, UserBaseTaskDB 
 import pandas as pd
 import os, time
 from defaults import disciplines
