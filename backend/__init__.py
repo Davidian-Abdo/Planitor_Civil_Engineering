@@ -8,9 +8,11 @@ from backend.database import (
     SessionLocal, 
     get_db_session, 
     init_db, 
+    save_discipline_zone_config,
+    get_discipline_zone_config,
     check_database_health
 )
-from backend.db_models import UserDB, BaseTaskDB, ScheduleDB, MonitoringDB, LoginAttemptDB
+from backend.db_models import UserDB, BaseTaskDB, ScheduleDB, MonitoringDB, LoginAttemptDB, DisciplineZoneConfigDB
 from backend.auth import AuthManager, require_role, hash_password, verify_password
 from backend.init_backend import init_backend, check_backend_health
 
@@ -20,9 +22,9 @@ logger = get_logger(__name__)
 
 __all__ = [
     # Database
-    'engine', 'SessionLocal', 'get_db_session', 'init_db', 'check_database_health',
+    'engine', 'SessionLocal', 'get_db_session', 'init_db', 'check_database_health','save_discipline_zone_config', 'get_discipline_zone_config',
     # Models
-    'UserDB', 'BaseTaskDB', 'ScheduleDB', 'MonitoringDB', 'LoginAttemptDB',
+    'UserDB', 'BaseTaskDB', 'ScheduleDB', 'MonitoringDB', 'LoginAttemptDB', 'DisciplineZoneConfigDB',
     # Auth
     'AuthManager', 'require_role', 'hash_password', 'verify_password',
     # Initialization
