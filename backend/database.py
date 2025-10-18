@@ -9,6 +9,41 @@ import warnings
 
 logger = logging.getLogger(__name__)
 
+
+def save_discipline_zone_config(session, project_id, discipline_zone_cfg):
+    """
+    Save discipline-zone configuration for a specific project.
+
+    Example of discipline_zone_cfg:
+    {
+        "Structure": {
+            "zone_groups": [["Zone_1", "Zone_2"], ["Zone_3"]],
+            "strategy": "sequential"
+        },
+        "VRD": {
+            "zone_groups": [["Zone_1"], ["Zone_2", "Zone_3"]],
+            "strategy": "parallel"
+        }
+    }
+    """
+    from backend.db_models import DisciplineZoneConfigDB
+
+    cfg = DisciplineZoneConfigDB(
+        project_id=project_id,
+        config_data=discipline_zone_cfg
+    )
+    session.add(cfg)
+    session.commit()
+    return cfg
+
+
+def get_discipline_zone_config(session, project_id):
+    """Retrieve saved discipline-zone configuration for a project."""
+    from backend.db_models import DisciplineZoneConfigDB
+    cfg = session.query(DisciplineZoneConfigDB).filter_by(project_id=project_id).first()
+    return cfg.config_data if cfg else {}
+
+
 # Enhanced configuration with validation
 class DatabaseConfig:
     def __init__(self):
