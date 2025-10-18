@@ -17,6 +17,8 @@ VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']
 
 Base = declarative_base()
 
+
+
 class LoginAttemptDB(Base):
     __tablename__ = "login_attempts"
     id = Column(Integer, primary_key=True)
@@ -95,6 +97,12 @@ class BaseTaskDB(Base):
 
     def __repr__(self):
         return f"<Task {self.name} ({self.discipline})>"
+
+class DisciplineZoneConfigDB(Base):
+    project_id = Column(String(50), nullable=False)
+    discipline = Column(String(50), nullable=False)
+    strategy = Column(String(50), default="group_sequential")
+    zone_groups = Column(JSON, nullable=False, default=list)
 
 class ScheduleDB(Base):
     __tablename__ = "schedules"
