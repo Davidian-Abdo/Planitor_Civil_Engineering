@@ -48,14 +48,14 @@ workers = {
         max_crews={"9.2": 10}
     ),
 
-    "plaquiste": WorkerResource(
+    "Maçonnerie": WorkerResource(
         "Maçonnerie", count=84, hourly_rate=40,
         productivity_rates={"5.1": 10},
         skills=["Maçonnerie"],
         max_crews={"5.1": 25}
     ),
 
-    "Cloisennement": WorkerResource(
+    "plaquiste": WorkerResource(
         "Cloisennement", count=84, hourly_rate=40,
         productivity_rates={"5.2": 10},
         skills=["Cloisennement"],
@@ -379,9 +379,9 @@ BASE_TASKS = {
             min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
             predecessors=[]
         ),
-         BaseTask(
+        BaseTask(
             id="5.2", name="Cloisennement", discipline="SecondeOeuvre",
-            resource_type="Cloisennement", task_type="hybrid",
+            resource_type="plaquiste", task_type="hybrid",
             min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
             predecessors=[]
         ),
@@ -412,6 +412,12 @@ BASE_TASKS = {
             id="5.7", name="Enduit", discipline="SecondeOeuvre",
             resource_type="Enduit", task_type="worker",
             min_crews_needed=2, predecessors=["5.6"]
+        ),
+        BaseTask(
+            id="5.8", name="Faux-plafond", discipline="SecondeOeuvre",
+            resource_type="plaquiste", task_type="hybrid",
+            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
+            predecessors=[]
         ),
     ],
 }
