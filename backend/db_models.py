@@ -73,10 +73,22 @@ class BaseTaskDB(Base):
     repeat_on_floor = Column(Boolean, default=True)
     included = Column(Boolean, default=True)
     delay = Column(Integer, default=0)
+    
+    # Cross-floor configuration
+    cross_floor_dependencies = Column(JSON, default=list)
+    applies_to_floors = Column(String(20), default="auto")
+    
+    # System constraints
+    max_duration = Column(Float, default=365.0)        # Maximum allowed duration
+    max_crews = Column(Integer, default=50)   
+
     created_by_user = Column(Boolean, default=False)
     creator_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+
+    
 
     # Table constraints and indexes
     __table_args__ = (
