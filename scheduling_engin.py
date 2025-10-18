@@ -617,7 +617,7 @@ def run_schedule(zone_floors, quantity_matrix, start_date, workers_dict=None, eq
     equipment_used = equipment_dict if equipment_dict else equipment
 
     # Generate tasks
-    tasks = generate_tasks(BASE_TASKS, zone_floors, cross_floor_links=cross_floor_links,discipline_zone_cfg)
+    tasks = generate_tasks(BASE_TASKS, zone_floors, cross_floor_links,discipline_zone_cfg)
 
     # Validate tasks and patch missing data
     tasks, workers_used, equipment_used, quantity_matrix = validate_tasks(tasks, workers_used, equipment_used, quantity_matrix)
