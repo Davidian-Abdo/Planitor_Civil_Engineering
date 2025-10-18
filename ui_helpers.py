@@ -1,5 +1,53 @@
 import streamlit as st
 
+
+# ui_helpers.py (new)
+import streamlit as st
+
+@dataclass
+class DisciplineZoneConfig:
+    """Holds zone grouping info per discipline"""
+    discipline: str
+    zone_groups: list  # List of lists of zone names [[zoneA, zoneB], [zoneC]]
+    strategy: str = "sequential"  # "sequential" or "fully_parallel"
+
+
+def render_discipline_zone_config(disciplines, zones, key_prefix="disc_zone_cfg"):
+    """
+    Renders a UI to configure zones per discipline:
+    - User can select zones to run in parallel or sequential groups
+    Returns dict: {discipline: DisciplineZoneConfig}
+    """
+    cfg = {}
+    for disc in disciplines:
+        st.markdown(f"### Discipline: {disc}")
+        with st.expander(f"Configure zone execution for {disc}", expanded=False):
+            st.markdown("Select zones to run in **parallel groups** or **sequentially**:")
+            selected_strategy = st.radio(
+                f"Execution type ({disc})",
+                options=["sequential", "fully_parallel"],
+                key=f"{key_prefix}_strategy_{disc}"
+            )
+            group_text = st.text_area(
+                f"Zone Groups ({disc})",
+                value=",".join(zones),
+                help="Enter zones separated by commas for first group; use new lines for multiple groups",
+                key=f"{key_prefix}_groups_{disc}"
+            )
+            # Parse into list of lists
+            zone_groups = []
+            for line in group_text.strip().split("\n"):
+                group = [z.strip() for z in line.split(",") if z.strip()]
+                if group:
+                    zone_groups.append(group)
+
+            cfg[disc] = DisciplineZoneConfig(
+                discipline=disc,
+                zone_groups=zone_groups,
+                strategy=selected_strategy
+            )
+    return cfg
+
 def inject_ui_styles():
     """Inject professional UI styles"""
     st.markdown("""
