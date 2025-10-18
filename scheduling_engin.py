@@ -596,35 +596,92 @@ class AdvancedScheduler:
 
         return schedule
 
-# -----------------------------
-# Reporter (exports Excel)
-# -----------------------------
+def get_user_tasks_for_scheduling(user_id):
+    """Get user's tasks organized by discipline for scheduling"""
+    with SessionLocal() as session:
+        user_tasks = session.query(UserBaseTaskDB).filter(
+            UserBaseTaskDB.user_id == user_id,
+            UserBaseTaskDB.included == True
+        ).all()
+        
+        return organize_user_tasks_by_discipline(user_tasks)
 
-# -----------------------------
-# Task generator (zones/floors expansion)
-# -----------------------------
-
-
+def organize_user_tasks_by_discipline(user_tasks):
+    """Convert user tasks to the format expected by generate_tasks_hybrid"""
+    tasks_by_discipline = {}
     
-def run_schedule(zone_floors, quantity_matrix, start_date, workers_dict=None, equipment_dict=None, holidays=None,discipline_zone_cfg=None):
+    for task in user_tasks:
+        if task.discipline not in tasks_by_discipline:
+            tasks_by_discipline[task.discipline] = []
+        
+        # Convert UserBaseTaskDB to dictionary format
+        task_dict = {
+            'id': task.base_task_id,
+            'name': task.name,
+            'discipline': task.discipline,
+            'resource_type': task.resource_type,
+            'base_duration': task.base_duration,
+            'min_crews_needed': task.min_crews_needed,
+            'min_equipment_needed': task.min_equipment_needed or {},
+            'predecessors': task.predecessors or [],
+            'repeat_on_floor': task.repeat_on_floor,
+            'included': task.included,
+            'delay': task.delay,
+            'cross_floor_dependencies': task.cross_floor_dependencies or [],
+            'applies_to_floors': task.applies_to_floors,
+            'cross_floor_repetition': getattr(task, 'cross_floor_repetition', True),
+            'task_type': getattr(task, 'task_type', 'worker')
+        }
+        
+        tasks_by_discipline[task.discipline].append(task_dict)
+    
+    return tasks_by_discipline
+
+def run_schedule(zone_floors, quantity_matrix, start_date, workers_dict=None, 
+                       equipment_dict=None, holidays=None, discipline_zone_cfg=None,
+                       base_tasks_override=None, user_id=None):
     """
-    Run the scheduling logic using either default dictionaries or uploaded user data.
-    Returns schedule (dict of DataFrames) and output folder path.
+    Run scheduling with HYBRID approach:
+    - Predefined cross_floor_links + User modifications
+    
+    Args:
+        base_tasks_override: User-modified tasks (optional)
+        user_id: For user-specific task loading (optional)
     """
     from reporting import BasicReporter
+    
     # Use defaults if no user input
     workers_used = workers_dict if workers_dict else workers
     equipment_used = equipment_dict if equipment_dict else equipment
-
-    # Generate tasks
-    tasks = generate_tasks(BASE_TASKS, zone_floors, cross_floor_links,discipline_zone_cfg)
+    
+    # DECISION: Use user tasks or default tasks?
+    if base_tasks_override is not None:
+        base_tasks_to_use = base_tasks_override
+        print("✅ Using provided user tasks")
+    elif user_id is not None:
+        # Load user-specific tasks from database
+        base_tasks_to_use = get_user_tasks_for_scheduling(user_id)
+        print(f"✅ Using tasks for user: {user_id}")
+    else:
+        base_tasks_to_use = BASE_TASKS
+        print("✅ Using default tasks")
+    
+    # Generate tasks with HYBRID function
+    tasks = generate_tasks(
+        base_tasks_to_use, 
+        zone_floors, 
+        cross_floor_links,  # Your predefined dependencies
+        discipline_zone_cfg=discipline_zone_cfg
+    )
 
     # Validate tasks and patch missing data
-    tasks, workers_used, equipment_used, quantity_matrix = validate_tasks(tasks, workers_used, equipment_used, quantity_matrix)
+    tasks, workers_used, equipment_used, quantity_matrix = validate_tasks(
+        tasks, workers_used, equipment_used, quantity_matrix
+    )
 
     # Calendar and duration
     workweek = [0, 1, 2, 3, 4, 5]
-    start_date= pd.Timestamp(start_date)
+    start_date = pd.Timestamp(start_date)
     cal = AdvancedCalendar(start_date=start_date, holidays=holidays, workweek=workweek)
     dur_calc = DurationCalculator(workers_used, equipment_used, quantity_matrix)
 
@@ -637,7 +694,6 @@ def run_schedule(zone_floors, quantity_matrix, start_date, workers_dict=None, eq
     output_folder = reporter.export_all()
 
     return schedule, output_folder
-
 
 def analyze_project_progress(reference_df: pd.DataFrame, actual_df: pd.DataFrame) -> pd.DataFrame:
     """
