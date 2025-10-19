@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 """
-Database backup script
-Creates timestamped backups of the construction database
+Database backup script - UPDATED FOR POSTGRESQL
 """
 
 import sys
 import os
-import shutil
 import datetime
 import logging
+import subprocess
 from pathlib import Path
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import settings
+# Use environment variables instead of missing config
+DB_NAME = os.getenv("DB_NAME", "construction_db")
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 def backup_database():
-    """Create a backup of the database file"""
+    """Create a PostgreSQL backup using pg_dump"""
     try:
         # Create backups directory
         backups_dir = Path("backups")
@@ -27,21 +30,32 @@ def backup_database():
         
         # Generate backup filename with timestamp
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_file = backups_dir / f"construction_db_backup_{timestamp}.db"
+        backup_file = backups_dir / f"construction_db_backup_{timestamp}.sql"
         
-        # Copy database file (for SQLite)
-        if settings.DATABASE_URL.startswith("sqlite"):
-            db_path = settings.DATABASE_URL.replace("sqlite:///", "")
-            if os.path.exists(db_path):
-                shutil.copy2(db_path, backup_file)
-                logger.info(f"✅ Database backed up to: {backup_file}")
-                return True
-            else:
-                logger.error("❌ Database file not found")
-                return False
-        else:
-            logger.info("ℹ️  Backup for PostgreSQL requires pg_dump utility")
+        # Build pg_dump command
+        cmd = [
+            "pg_dump",
+            "-h", DB_HOST,
+            "-p", DB_PORT,
+            "-U", DB_USER,
+            "-d", DB_NAME,
+            "-f", str(backup_file),
+            "--verbose"
+        ]
+        
+        # Set password in environment for pg_dump
+        env = os.environ.copy()
+        env["PGPASSWORD"] = os.getenv("DB_PASSWORD", "")
+        
+        # Execute backup
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            logger.info(f"✅ Database backed up to: {backup_file}")
             return True
+        else:
+            logger.error(f"❌ Backup failed: {result.stderr}")
+            return False
             
     except Exception as e:
         logger.error(f"❌ Backup failed: {e}")
