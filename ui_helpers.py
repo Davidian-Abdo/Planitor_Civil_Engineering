@@ -20,8 +20,15 @@ constraint_manager = SimpleConstraintManager()
 
 # ==================== TASK MANAGEMENT FUNCTIONS ====================
 def get_all_users():
-    """Get list of all users for admin management"""
-    return [st.session_state["user"]["username"]]
+    """Get list of all users for admin management - FIXED VERSION"""
+    try:
+        with SessionLocal() as session:
+            from backend.db_models import UserDB
+            users = session.query(UserDB).all()
+            return [user.username for user in users]  # Return usernames for display
+    except Exception as e:
+        st.error(f"Error loading users: {e}")
+        return [st.session_state["user"]["username"]]
 
 def save_user_task(task, is_new, user_id, task_name, discipline, resource_type, 
                   base_duration, min_crews_needed, cross_floor_config, selected_predecessors):
@@ -141,29 +148,36 @@ def organize_tasks_by_discipline(user_tasks):
     return tasks_by_discipline
 
 def user_specific_task_management():
-    """Task management for individual users with constraints"""
+    """Task management for individual users with constraints - FIXED VERSION"""
     st.subheader("📝 Manage Your Task Library")
     
-    # Get current user
-    current_user = st.session_state["user"]["username"]
+    # ✅ FIXED: Get numeric user ID, not username
+    current_user_id = st.session_state["user"]["id"]  # This should be numeric
+    current_username = st.session_state["user"]["username"]  # Keep username for display
     user_role = st.session_state["user"]["role"]
     
     # Admin can see all users, others only see their own
     if user_role == "admin":
         st.info("👑 Admin View: You can manage all user task libraries")
         all_users = get_all_users()
-        selected_user = st.selectbox("Select User to Manage:", all_users, index=all_users.index(current_user))
-        target_user = selected_user
+        selected_username = st.selectbox("Select User to Manage:", all_users, index=all_users.index(current_username))
+        
+        # ✅ FIXED: Convert username to numeric ID for the selected user
+        # You'll need to query the database to get the ID for the selected username
+        with SessionLocal() as session:
+            from backend.db_models import UserDB
+            selected_user = session.query(UserDB).filter_by(username=selected_username).first()
+            target_user_id = selected_user.id if selected_user else current_user_id
     else:
-        target_user = current_user
+        target_user_id = current_user_id  # ✅ Use numeric ID
         st.info(f"👤 Managing your personal task library")
     
     # Two-column layout
     col_list, col_editor = st.columns([2, 3])
     with col_list:
-        show_user_task_list(target_user)
+        show_user_task_list(target_user_id)  # ✅ Pass numeric ID
     with col_editor:
-        show_constrained_task_editor(target_user)
+        show_constrained_task_editor(target_user_id)
 
 def show_constrained_task_editor(user_id):
     """Task editor with constraint validation"""
