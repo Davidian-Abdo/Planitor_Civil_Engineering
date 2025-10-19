@@ -6,15 +6,16 @@ from backend.db_models import UserBaseTaskDB  # ✅ REMOVED BaseTaskDB - it does
 import pandas as pd
 import os, time
 from defaults import disciplines
-
 # Import your existing UI logic
 from scheduling_engin import run_schedule, analyze_project_progress
 from ui_helpers import (
-    inject_ui_styles, create_metric_row, create_info_card, render_upload_section, 
-    render_discipline_zone_config, cross_floor_dependency_ui, get_all_users, 
-    save_user_task, display_user_task_card, show_import_template_modal, 
-    SimpleConstraintManager, show_constrained_task_editor, user_specific_task_management, 
-    show_user_task_list, organize_tasks_by_discipline  # ✅ FIXED: Combined into one import
+    inject_ui_styles, create_metric_row, create_info_card,
+    render_upload_section, render_discipline_zone_config, 
+    cross_floor_dependency_ui, constraint_manager,
+    # Task management functions
+    get_all_users, save_user_task, display_user_task_card,
+    show_user_task_list, organize_tasks_by_discipline,
+    user_specific_task_management, show_constrained_task_editor
 )
 from helpers import generate_quantity_template, generate_worker_template, generate_equipment_template, parse_quantity_excel, parse_worker_excel, parse_equipment_excel
 from reporting import generate_interactive_gantt, MonitoringReporter  # ✅ ADDED MonitoringReporter
