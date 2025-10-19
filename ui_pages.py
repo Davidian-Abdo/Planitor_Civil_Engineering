@@ -9,6 +9,7 @@ from defaults import disciplines
 # Import your existing UI logic (keep these the same)
 from scheduling_engin import run_schedule, analyze_project_progress
 from ui_helpers import inject_ui_styles, create_metric_row, create_info_card, render_upload_section, render_discipline_zone_config, cross_floor_dependency_ui
+from ui_heplpers import get_all_users, save_user_task, display_user_task_card, show_import_template_modal, SimpleConstraintManage, show_constrained_task_editor
 from helpers import generate_quantity_template, generate_worker_template, generate_equipment_template,parse_quantity_excel, parse_worker_excel, parse_equipment_excel
 from reporting import  generate_interactive_gantt
 from defaults import workers,equipment, BASE_TASKS, disciplines
@@ -70,123 +71,6 @@ def main_ui():
         page_func()
     else:
         st.error("Page not available for your role.")
-
-def show_constrained_task_editor(user_id):
-    """Task editor with constraint validation"""
-    editing_task_id = st.session_state.get("editing_task_id")
-    creating_new = st.session_state.get("creating_new_task", False)
-    
-    if not editing_task_id and not creating_new:
-        st.info("👈 Select a task from your library to edit, or create a new one")
-        return
-    
-    with SessionLocal() as session:
-        if editing_task_id:
-            task = session.query(UserBaseTaskDB).filter(
-                UserBaseTaskDB.id == editing_task_id,
-                UserBaseTaskDB.user_id == user_id
-            ).first()
-            is_new = False
-        else:
-            task = UserBaseTaskDB(user_id=user_id)
-            is_new = True
-        
-        with st.form(f"task_form_{user_id}_{task.id if task.id else 'new'}"):
-            st.markdown("### ✏️ Task Editor with Validation")
-            
-            # Basic Information with Constraints
-            st.markdown("**📝 Basic Information**")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                task_name = st.text_input("Task Name", 
-                    value=task.name if task else "",
-                    max_chars=255,
-                    help="Descriptive name for the task"
-                )
-                
-                discipline = st.selectbox("Discipline", disciplines, 
-                    index=disciplines.index(task.discipline) if task and task.discipline else 0
-                )
-            
-            with col2:
-                resource_type = st.selectbox("Resource Type", ["worker", "equipment", "hybrid"],
-                    index=["worker", "equipment", "hybrid"].index(task.resource_type) if task and task.resource_type else 0
-                )
-                
-                # Duration with constraints
-                default_duration = constraint_manager.get_default_value("duration", discipline) or 1.0
-                min_duration = constraint_manager.constraints.get(f"duration_{discipline}") or constraint_manager.constraints.get("duration_global")
-                max_duration = constraint_manager.constraints.get(f"duration_{discipline}") or constraint_manager.constraints.get("duration_global")
-                
-                base_duration = st.number_input("Base Duration (days)", 
-                    min_value=float(min_duration.min_value) if min_duration else 0.1,
-                    max_value=float(max_duration.max_value) if max_duration else 365.0,
-                    value=task.base_duration if task and task.base_duration else default_duration,
-                    step=0.5,
-                    help=f"Allowed range: {min_duration.min_value if min_duration else 0.1} - {max_duration.max_value if max_duration else 365.0} days"
-                )
-            
-            # Crews with constraints
-            st.markdown("**👷 Resource Requirements**")
-            col1, col2 = st.columns(2)
-            with col1:
-                default_crews = constraint_manager.get_default_value("crews", discipline) or 1
-                min_crews = constraint_manager.constraints.get(f"crews_{discipline}") or constraint_manager.constraints.get("crews_global")
-                max_crews = constraint_manager.constraints.get(f"crews_{discipline}") or constraint_manager.constraints.get("crews_global")
-                
-                min_crews_needed = st.number_input("Minimum Crews", 
-                    min_value=int(min_crews.min_value) if min_crews else 1,
-                    max_value=int(max_crews.max_value) if max_crews else 50,
-                    value=task.min_crews_needed if task and task.min_crews_needed else default_crews,
-                    step=1,
-                    help=f"Allowed range: {min_crews.min_value if min_crews else 1} - {max_crews.max_value if max_crews else 50} crews"
-                )
-            
-            # Cross-floor configuration
-            st.markdown("**🔄 Cross-Floor Configuration**")
-            cross_floor_config = cross_floor_dependency_ui(task) if task else {}
-            
-            # Predecessors with constraint
-            st.markdown("**⏩ Predecessor Tasks**")
-            with SessionLocal() as inner_session:
-                user_tasks = inner_session.query(UserBaseTaskDB).filter(
-                    UserBaseTaskDB.user_id == user_id,
-                    UserBaseTaskDB.id != getattr(task, 'id', None)
-                ).all()
-                predecessor_options = [f"{t.name} ({t.discipline})" for t in user_tasks]
-                selected_predecessors = st.multiselect("Select predecessor tasks:", 
-                    predecessor_options,
-                    help="Maximum 10 predecessors allowed"
-                )
-            
-            # Form submission with validation
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.form_submit_button("💾 Save Task", use_container_width=True):
-                    # Prepare task data for validation
-                    task_data = {
-                        'base_duration': base_duration,
-                        'min_crews_needed': min_crews_needed,
-                        'predecessors': selected_predecessors
-                    }
-                    
-                    # Validate against constraints
-                    validation_errors = constraint_manager.validate_task_data(task_data, discipline)
-                    
-                    if validation_errors:
-                        for error in validation_errors:
-                            st.error(error)
-                    else:
-                        save_user_task(task, is_new, user_id, task_name, discipline, resource_type, 
-                                     base_duration, min_crews_needed, cross_floor_config, selected_predecessors)
-            
-            with col2:
-                if st.form_submit_button("❌ Cancel", use_container_width=True):
-                    st.session_state.pop("editing_task_id", None)
-                    st.session_state.pop("creating_new_task", None)
-                    st.rerun()
-
 
 
 # In ui_pages.py - Enhanced Tab 5
