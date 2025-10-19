@@ -13,7 +13,7 @@ from sqlalchemy import text
 
 # Import carefully to avoid circular dependencies
 from backend.database import engine, SessionLocal
-from backend.db_models import Base, UserDB, BaseTaskDB, LoginAttemptDB
+from backend.db_models import Base, UserDB, UserBaseTaskDB, LoginAttemptDB
 from backend.auth import hash_password  # Use corrected hash_password function
 
 # ----------------- Logging Setup -----------------
@@ -150,7 +150,7 @@ def _create_default_tasks_from_defaults():
         from defaults import BASE_TASKS
         
         with SessionLocal() as session:
-            task_count = session.query(BaseTaskDB).count()
+            task_count = session.query(UserBaseTaskDB).count()
             
             if task_count == 0:
                 logger.info("Creating default construction tasks from defaults.py BASE_TASKS...")
@@ -166,7 +166,7 @@ def _create_default_tasks_from_defaults():
                             continue
                         
                         # Convert BaseTask from defaults.py to BaseTaskDB
-                        db_task = BaseTaskDB(
+                        db_task = UserBaseTaskDB(
                             name=base_task.name,
                             discipline=discipline,
                             resource_type=base_task.resource_type,
@@ -211,7 +211,7 @@ def _create_fallback_tasks():
     try:
         with SessionLocal() as session:
             fallback_tasks = [
-                BaseTaskDB(
+                UserBaseTaskDB(
                     name="Site Preparation",
                     discipline="Préliminaire",
                     resource_type="BétonArmée",
@@ -222,7 +222,7 @@ def _create_fallback_tasks():
                     included=True,
                     created_by_user=False
                 ),
-                BaseTaskDB(
+                UserBaseTaskDB(
                     name="Excavation", 
                     discipline="Terrassement",
                     resource_type="BétonArmée",
@@ -234,7 +234,7 @@ def _create_fallback_tasks():
                     included=True,
                     created_by_user=False
                 ),
-                BaseTaskDB(
+                UserBaseTaskDB(
                     name="Concrete Foundation",
                     discipline="Fondations",
                     resource_type="BétonArmée",
@@ -310,7 +310,7 @@ def check_backend_health():
             
             # Check if tables are accessible
             user_count = session.query(UserDB).count()
-            task_count = session.query(BaseTaskDB).count()
+            task_count = session.query(UserBaseTaskDB).count()
             health_status["tables_accessible"] = True
             
             # Check if default data exists
@@ -383,9 +383,9 @@ def get_tasks_by_discipline(discipline):
     """Get tasks filtered by discipline"""
     try:
         with SessionLocal() as session:
-            return session.query(BaseTaskDB).filter(
-                BaseTaskDB.discipline == discipline,
-                BaseTaskDB.included == True
+            return session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.discipline == discipline,
+                UserBaseTaskDB.included == True
             ).order_by(BaseTaskDB.name).all()
     except Exception as e:
         logger.error(f"Error getting tasks for discipline {discipline}: {e}")
