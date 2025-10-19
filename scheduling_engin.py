@@ -14,27 +14,29 @@ import loguru
 import streamlit as st
 import plotly.express as px
 from io import BytesIO
-from models import Task,BaseTask, WorkerResource, EquipmentResource
+
+# ✅ ADD MISSING IMPORTS
+from backend.database import SessionLocal
+from backend.db_models import UserBaseTaskDB
+
+from models import Task, BaseTask, WorkerResource, EquipmentResource
 from defaults import workers, equipment, BASE_TASKS, cross_floor_links, acceleration, SHIFT_CONFIG, disciplines
 
 from helpers import (
-    ResourceAllocationList,AdvancedResourceManager,EquipmentResourceManager,
-    Topo_order_tasks,
-    generate_tasks,
-    validate_tasks
+    ResourceAllocationList, AdvancedResourceManager, EquipmentResourceManager,
+    Topo_order_tasks, generate_tasks, validate_tasks
 )
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format="%(levelname)s: %(message)s"
 )
-ground_disciplines=["Préliminaire","Terrassement","Fondations"]
+ground_disciplines = ["Préliminaire", "Terrassement", "Fondations"]
+
 # ----------------------------
-
-
-# -----------------------------
 # Calendar (workdays) - half-open end
-# -----------------------------
+# ----------------------------
 class AdvancedCalendar:
     def __init__(self, start_date, holidays=None, workweek=None):
         self.current_date = pd.to_datetime(start_date)
@@ -64,6 +66,7 @@ class AdvancedCalendar:
             current = current + timedelta(days=1)
         # return the day after the last workday (exclusive end)
         return pd.to_datetime(last_workday) + pd.Timedelta(days=1)
+    
     def add_calendar_days(self, start_date, days):
         """Add calendar days (includes weekends/holidays) - for DELAYS"""
         """Returns exclusive end date"""
@@ -75,7 +78,6 @@ class AdvancedCalendar:
 # -----------------------------
 # Duration Calculator (uses separate pools)
 # -----------------------------
-
 class DurationCalculator:
     def __init__(self, workers: Dict[str, WorkerResource], equipment: Dict[str, EquipmentResource], quantity_matrix: Dict):
         self.workers = workers
@@ -84,20 +86,21 @@ class DurationCalculator:
         self.acceleration = acceleration
 
     def _get_quantity(self, task: Task):
+        """Get quantity for task from quantity matrix with fallback handling"""
         base_q = self.quantity_matrix.get(str(task.base_id), {})
         floor_q = base_q.get(task.floor, {})
     
         if not floor_q:  # Check if floor_q is empty dict or None
-            print(f"⚠️ Floor {task.floor} for task {task.base_id} not found in quantity_matrix")
+            logger.warning(f"⚠️ Floor {task.floor} for task {task.base_id} not found in quantity_matrix")
             qty = getattr(task, 'quantity', 1)  # Fallback
         else:
             qty = floor_q.get(task.zone, getattr(task, 'quantity', 1))
     
         if qty is None or qty <= 0:
-            print(f"⚠️ Invalid quantity {qty} for task {task.base_id}, defaulting to 1")
+            logger.warning(f"⚠️ Invalid quantity {qty} for task {task.base_id}, defaulting to 1")
             qty = 1
     
-        print(f"✅ Task {task.base_id}, floor {task.floor} quantity: {qty}")
+        logger.info(f"✅ Task {task.base_id}, floor {task.floor} quantity: {qty}")
         task.quantity = qty
         return qty
 
@@ -126,37 +129,36 @@ class DurationCalculator:
 
     def calculate_duration(self, task: Task, allocated_crews: int = None, allocated_equipments: dict = None) -> int:
         """
-        Calculate workdays using the actual allocated resources:
-          - allocated_crews: integer (if None -> use task.crews_needed)
-          - allocated_equipment: dict {eq_name: units} (if None -> use task.equipment_needed)
-        Return integer days (min 1).
-          -if duration is fixed returns it
+        Calculate workdays using the actual allocated resources.
         """
+        # If task has fixed base duration, return it
         if getattr(task, "base_duration", None) is not None:
             return int(math.ceil(task.base_duration))
+            
         qty = self._get_quantity(task)
 
-        # normalize allocated items
+        # Normalize allocated items
         crews = allocated_crews if allocated_crews is not None else max(1, task.min_crews_needed)
         eq_alloc = allocated_equipments if allocated_equipments is not None else (task.min_equipment_needed or {})
-        A=7
+
         if task.task_type == "worker":
             if task.resource_type not in self.workers:
                 raise ValueError(f"Worker resource '{task.resource_type}' not found for task {task.id}")
+            
             res = self.workers[task.resource_type]
-            # FIXED: Use task-specific productivity rate
             base_prod = self._get_productivity_rate(res, task.base_id, 1.0)
-            # worker daily production = base_prod * crews * efficiency
             daily_prod = base_prod * crews 
+            
             if daily_prod <= 0:
                 raise ValueError(f"Non-positive worker productivity for {task.id}")
+                
             duration = qty / daily_prod
-            A=base_prod
+
         elif task.task_type == "equipment":
             if not eq_alloc:
                 raise ValueError(f"Equipment task {task.id} has no equipment specified")
             
-            # FIXED: Use only the first equipment type for productivity calculation
+            # Use only the first equipment type for productivity calculation
             first_eq_type = self._get_first_equipment_type(task.min_equipment_needed)
             if not first_eq_type:
                 raise ValueError(f"No equipment types found in min_equipment_needed for task {task.id}")
@@ -177,23 +179,25 @@ class DurationCalculator:
             res = self.equipment[first_eq_type]
             base_prod = self._get_productivity_rate(res, task.base_id, 1.0)
             daily_prod_total = base_prod * total_units 
-            A=base_prod
+            
             if daily_prod_total <= 0:
                 raise ValueError(f"Non-positive equipment productivity for {task.id}")
+                
             duration = qty / daily_prod_total
 
         elif task.task_type == "hybrid":
-            # worker-limited
+            # Worker-limited calculation
             if task.resource_type not in self.workers:
                 raise ValueError(f"Worker resource '{task.resource_type}' not found for task {task.id}")
+                
             worker_res = self.workers[task.resource_type]
-            # FIXED: Use task-specific productivity rate
             base_prod_worker = self._get_productivity_rate(worker_res, task.base_id, 1.0)
             daily_worker_prod = base_prod_worker * crews 
+            
             if daily_worker_prod <= 0:
                 raise ValueError(f"Non-positive worker productivity for {task.id}")
-            A=base_prod_worker
-            # FIXED: Equipment-limited using only first equipment type
+
+            # Equipment-limited calculation using only first equipment type
             daily_equip_prod = 0
             if eq_alloc:
                 first_eq_type = self._get_first_equipment_type(task.min_equipment_needed)
@@ -207,54 +211,47 @@ class DurationCalculator:
                     
                     eq_res = self.equipment[first_eq_type]
                     base_prod_eq = self._get_productivity_rate(eq_res, task.base_id, 1.0)
-                    daily_equip_prod = base_prod_eq * total_units * eq_res.efficiency
+                    daily_equip_prod = base_prod_eq * total_units * getattr(eq_res, 'efficiency', 1.0)
             
-            # Worker duration
+            # Calculate both durations and use the bottleneck
             duration_worker = qty / daily_worker_prod if daily_worker_prod > 0 else float('inf')
-            
-            # Equipment duration (if equipment is used)
             duration_equip = qty / daily_equip_prod if daily_equip_prod > 0 else float('inf')
             
             # Use the longer duration (bottleneck)
-            duration = duration_worker
+            duration = max(duration_worker, duration_equip)
 
         else:
             raise ValueError(f"Unknown task_type: {task.task_type}")
 
+        # Apply shift factors and floor acceleration
         shift_factor = SHIFT_CONFIG.get(task.discipline, SHIFT_CONFIG.get("default", 1.0))
         duration = duration / shift_factor
+        
+        # Apply floor acceleration (higher floors may be faster due to experience)
         if task.floor > 1:
             duration *= 0.98 ** (task.floor - 1)
 
-        # validate & clamp
+        # Validate & clamp duration
         if not isinstance(duration, (int, float)) or math.isnan(duration) or math.isinf(duration):
             raise ValueError(f"Invalid duration for task {task.id}: {duration!r}")
 
         duration = float(duration)
         if duration <= 1:
-            warnings.warn(f"Computed non-positive duration for task {task.id}. Setting to 1 day.")
+            logger.warning(f"Computed non-positive duration for task {task.id}. Setting to 1 day.")
             duration = 1.0
 
         duration_days = int(math.ceil(duration))
-        print(f"for {task.id} duration is {duration_days} productivity is {A}")
+        logger.debug(f"Task {task.id} duration: {duration_days} days")
+        
         return max(1, duration_days)
+
 # -----------------------------
 # CPM Analyzer (day counts)
 # -----------------------------
-
-
 class CPMAnalyzer:
     def __init__(self, tasks, durations=None, dependencies=None):
         """
         Flexible CPM analyzer.
-
-        Option A:
-            tasks: list of Task objects
-                Each Task must have .id, .predecessors, .base_duration
-        Option B:
-            tasks: list of task IDs
-            durations: dict {task_id: duration}
-            dependencies: dict {task_id: list of predecessor_ids}
         """
         # Case A: list of Task objects
         if durations is None and dependencies is None and tasks and hasattr(tasks[0], "id"):
@@ -282,7 +279,6 @@ class CPMAnalyzer:
         self.float = {}
         self.project_duration = 0
 
-    # --------------------------------------------------------
     def build_graph(self):
         """Build adjacency and degree maps."""
         for tid in self.tasks:
@@ -293,7 +289,6 @@ class CPMAnalyzer:
                 self.indeg[tid] += 1
                 self.outdeg[p] += 1
 
-    # --------------------------------------------------------
     def forward_pass(self):
         """Compute earliest start/finish (ES/EF)."""
         q = deque([tid for tid in self.tasks if self.indeg[tid] == 0])
@@ -308,7 +303,6 @@ class CPMAnalyzer:
                     q.append(v)
         self.project_duration = max(self.EF.values())
 
-    # --------------------------------------------------------
     def backward_pass(self):
         """Compute latest start/finish (LS/LF)."""
         q = deque([tid for tid in self.tasks if self.outdeg[tid] == 0])
@@ -328,7 +322,6 @@ class CPMAnalyzer:
                 if self.outdeg[p] == 0:
                     q.append(p)
 
-    # --------------------------------------------------------
     def analyze(self):
         """Run full CPM analysis and calculate floats."""
         self.build_graph()
@@ -340,7 +333,6 @@ class CPMAnalyzer:
 
         return self.project_duration
 
-    # --------------------------------------------------------
     def get_critical_tasks(self):
         """Return list of critical task IDs (slack == 0)."""
         return [tid for tid in self.tasks if self.float.get(tid, 0) == 0]
@@ -370,8 +362,6 @@ class CPMAnalyzer:
         return self
 
 # -----------------------------
-
-# -----------------------------
 # Advanced Scheduler
 # -----------------------------
 class AdvancedScheduler:
@@ -391,7 +381,7 @@ class AdvancedScheduler:
     def _all_predecessors_scheduled(self, task, schedule):
         """Return True if all predecessors (that should be considered) are in schedule."""
         for p in task.predecessors:
-            # If predecessor doesn't exist in our task_map, it's an error in generation (should be caught earlier)
+            # If predecessor doesn't exist in our task_map, it's an error in generation
             if p not in self.task_map:
                 raise ValueError(f"Task {task.id} has a predecessor {p} that is not part of the task set.")
             if p not in schedule:
@@ -405,22 +395,21 @@ class AdvancedScheduler:
             for p in task.predecessors
             if p in schedule and schedule[p][1] is not None
         ]
+        
         if not pred_end_dates:
-            print(f"[DEBUG earliest_start] Task {task.id}: No scheduled predecessors found at this moment")
-            print(f"  Predecessors: {task.predecessors}")
-            print(f"  Schedule keys currently: {list(schedule.keys())}")
-        if pred_end_dates:
-            return max(pred_end_dates)
-        else:
+            logger.debug(f"Task {task.id}: No scheduled predecessors found")
             return self.calendar.current_date
+            
+        return max(pred_end_dates)
 
     def _allocate_resources_for_window(self, task, start_date, duration_days):
-        """Helper method to allocate resources for a specific time window."""
+        """
+        FIXED: Helper method to allocate resources for a specific time window.
+        Resources are NOT released here - only when we commit allocations.
+        """
         end_date = self.calendar.add_workdays(start_date, duration_days)
         
-        # Release any previous allocations for this task
-        self.worker_manager.release(task.id)
-        self.equipment_manager.release(task.id)
+        # ✅ FIXED: Do NOT release resources here - this was causing the bug
         
         # Compute allocations
         possible_crews = None
@@ -453,6 +442,7 @@ class AdvancedScheduler:
         return feasible_workers, feasible_equip
 
     def generate(self):
+        """Generate optimized schedule with resource constraints."""
         schedule = {}
         unscheduled = set(self.task_map.keys())
 
@@ -476,7 +466,7 @@ class AdvancedScheduler:
                 if not isinstance(d, int) or d < 0:
                     raise ValueError(f"Computed invalid duration {d!r}")
             except Exception as e:
-                print(f"[DUR ERROR] Task {tid}: cannot compute nominal duration before scheduling => {e!r}")
+                logger.error(f"Task {tid}: cannot compute nominal duration => {e!r}")
                 raise
             # store precomputed nominal duration on task so scheduler can use it as a fallback
             t.nominal_duration = d
@@ -500,6 +490,9 @@ class AdvancedScheduler:
                     raise RuntimeError("Scheduler stuck waiting for predecessors.")
                 continue
 
+            # Reset attempts counter when we successfully process a task
+            attempts = 0
+            
             # Earliest start after predecessors
             start_date = self._earliest_start_from_preds(task, schedule)
             task.earliest_start = start_date
@@ -509,7 +502,7 @@ class AdvancedScheduler:
             if not isinstance(duration_days, int) or duration_days < 0:
                 raise ValueError(f"Invalid duration for {task.id}: {duration_days}")
 
-            # Handle instantaneous tasks
+            # Handle instantaneous tasks (duration = 0)
             if duration_days == 0:
                 schedule[task.id] = (start_date, start_date)
                 unscheduled.remove(task.id)
@@ -554,6 +547,10 @@ class AdvancedScheduler:
                     final_feasible_workers, final_feasible_equip = self._check_feasibility(task, final_crews, final_equip)
                     
                     if final_feasible_workers and final_feasible_equip:
+                        # ✅ FIXED: Only release previous allocations AFTER we have new ones confirmed
+                        self.worker_manager.release(task.id)
+                        self.equipment_manager.release(task.id)
+                        
                         # Commit allocations
                         allocated_crews = final_crews
                         allocated_equipments = final_equip
@@ -572,14 +569,19 @@ class AdvancedScheduler:
                 forward_attempts += 1
 
             if forward_attempts >= max_forward:
-                raise RuntimeError(f"Could not find resource window for task {task.id} after {max_forward} attempts.")
+                raise RuntimeError(
+                    f"Could not find resource window for task {task.id} ({task.name}) " 
+                    f"after {max_forward} attempts. Required: {task.min_crews_needed} crews, "
+                    f"Equipment: {task.min_equipment_needed}"
+                )
 
             # Final dependency enforcement
             for p in task.predecessors:
                 pred_end = schedule[p][1]
                 if start_date < pred_end:
                     raise RuntimeError(
-                        f"Dependency violation: Task {task.id} starts {start_date} before predecessor {p} ends {pred_end}"
+                        f"Dependency violation: Task {task.id} starts {start_date} "
+                        f"before predecessor {p} ends {pred_end}"
                     )
 
             # Record schedule
@@ -594,17 +596,20 @@ class AdvancedScheduler:
                 if pred_count[succ] == 0:
                     ready.append(succ)
 
+        logger.info(f"✅ Schedule generated successfully for {len(schedule)} tasks")
         return schedule
-
 def get_user_tasks_for_scheduling(user_id):
     """Get user's tasks organized by discipline for scheduling"""
-    with SessionLocal() as session:
-        user_tasks = session.query(UserBaseTaskDB).filter(
-            UserBaseTaskDB.user_id == user_id,
-            UserBaseTaskDB.included == True
-        ).all()
-        
-        return organize_user_tasks_by_discipline(user_tasks)
+    try:
+        with SessionLocal() as session:
+            user_tasks = session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.user_id == user_id,
+                UserBaseTaskDB.included == True
+            ).all() 
+            return organize_user_tasks_by_discipline(user_tasks)
+    except Exception as e:
+        logger.error(f"Error loading user tasks for user {user_id}: {e}")
+        return []
 
 def organize_user_tasks_by_discipline(user_tasks):
     """Convert user tasks to the format expected by generate_tasks_hybrid"""
@@ -614,9 +619,9 @@ def organize_user_tasks_by_discipline(user_tasks):
         if task.discipline not in tasks_by_discipline:
             tasks_by_discipline[task.discipline] = []
         
-        # Convert UserBaseTaskDB to dictionary format
+        # ✅ FIXED: Use task.id instead of task.base_task_id
         task_dict = {
-            'id': task.base_task_id,
+            'id': task.id,  # ✅ CORRECTED: UserBaseTaskDB uses 'id'
             'name': task.name,
             'discipline': task.discipline,
             'resource_type': task.resource_type,
@@ -631,10 +636,8 @@ def organize_user_tasks_by_discipline(user_tasks):
             'applies_to_floors': task.applies_to_floors,
             'cross_floor_repetition': getattr(task, 'cross_floor_repetition', True),
             'task_type': getattr(task, 'task_type', 'worker')
-        }
-        
+        } 
         tasks_by_discipline[task.discipline].append(task_dict)
-    
     return tasks_by_discipline
 
 def run_schedule(zone_floors, quantity_matrix, start_date, workers_dict=None, 
