@@ -1,37 +1,46 @@
-# ui_pages.py
+# ui_pages.py - FIXED VERSION
 import streamlit as st
-from backend.auth import auth_manager, require_role, login, logout  # Updated imports
+from backend.auth import auth_manager, require_role
 from backend.database import SessionLocal
-from backend.db_models import BaseTaskDB, UserBaseTaskDB 
+from backend.db_models import UserBaseTaskDB  # ✅ REMOVED BaseTaskDB - it doesn't exist
 import pandas as pd
 import os, time
 from defaults import disciplines
-# Import your existing UI logic (keep these the same)
+
+# Import your existing UI logic
 from scheduling_engin import run_schedule, analyze_project_progress
-from ui_helpers import inject_ui_styles, create_metric_row, create_info_card, render_upload_section, render_discipline_zone_config, cross_floor_dependency_ui,get_all_users, save_user_task, display_user_task_card
-from ui_heplpers import  show_import_template_modal, SimpleConstraintManage, show_constrained_task_editor,user_specific_task_management, show_user_task_list, organize_tasks_by_discipline
-from helpers import generate_quantity_template, generate_worker_template, generate_equipment_template,parse_quantity_excel, parse_worker_excel, parse_equipment_excel
-from reporting import  generate_interactive_gantt
-from defaults import workers,equipment, BASE_TASKS, disciplines
+from ui_helpers import (
+    inject_ui_styles, create_metric_row, create_info_card, render_upload_section, 
+    render_discipline_zone_config, cross_floor_dependency_ui, get_all_users, 
+    save_user_task, display_user_task_card, show_import_template_modal, 
+    SimpleConstraintManager, show_constrained_task_editor, user_specific_task_management, 
+    show_user_task_list, organize_tasks_by_discipline  # ✅ FIXED: Combined into one import
+)
+from helpers import generate_quantity_template, generate_worker_template, generate_equipment_template, parse_quantity_excel, parse_worker_excel, parse_equipment_excel
+from reporting import generate_interactive_gantt, MonitoringReporter  # ✅ ADDED MonitoringReporter
+from defaults import workers, equipment, BASE_TASKS, disciplines
+
+# ✅ FIXED: Initialize constraint manager properly
+constraint_manager = SimpleConstraintManager()
 
 # ------------------------- LOGIN / LOGOUT -------------------------
 def login_ui():
     st.sidebar.title("🔐 User Login")
     
-    # Use auth_manager for state checking
     if not auth_manager.is_authenticated():
         username = st.sidebar.text_input("Username")
         password = st.sidebar.text_input("Password", type="password")
         if st.sidebar.button("Login"):
-            user = auth_manager.login(username, password)  # Use auth_manager directly
+            user = auth_manager.login(username, password)
             if user:
-                st.session_state["user"] = user  # Keep for compatibility
+                st.session_state["user"] = user
+                st.session_state["logged_in"] = True  # ✅ ADDED: Set login state
                 st.success(f"Logged in as {user['username']} ({user['role']})")
-                st.rerun()  # Use rerun() instead of experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid credentials")
     else:
-        user = auth_manager.get_current_user()  # Get validated user
+        user = auth_manager.get_current_user()
         st.sidebar.write(f"✅ Logged in: {user['username']} ({user['role']})")
         if st.sidebar.button("Logout"):
             auth_manager.logout()
@@ -43,30 +52,27 @@ def login_ui():
 def scheduling_page():
     generate_schedule_ui()
 
-@require_role("admin", "manager", "worker", "viewer")  # Added viewer role
+@require_role("admin", "manager", "worker", "viewer")
 def monitoring_page():
     monitor_project_ui()
 
-constraint_manager = SimpleConstraintManager()
 # ------------------------- MAIN PAGE ROUTER -------------------------
 def main_ui():
-    login_ui()  # Sidebar login/logout
+    login_ui()
 
     if not st.session_state.get("logged_in", False):
         st.info("Please login to access project modules.")
         return
 
-    # Sidebar navigation
     user_role = st.session_state["user"]["role"]
     pages = {"Scheduling": scheduling_page, "Monitoring": monitoring_page}
-    # Optionally hide pages based on role
+    
     if user_role == "worker":
         pages.pop("Scheduling", None)
 
     st.sidebar.title("📂 Navigation")
     selection = st.sidebar.radio("Select Page", list(pages.keys()))
 
-    # Call selected page
     page_func = pages.get(selection)
     if page_func:
         page_func()
@@ -92,11 +98,7 @@ def generate_schedule_ui():
 
     # Main Tabs
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📋 Project Setup",
-        "📁 Templates",
-        "📤 Upload Data", 
-        "🚀 Generate & Results",
-        "📝 Manage Tasks"
+        "📋 Project Setup", "📁 Templates", "📤 Upload Data", "🚀 Generate & Results", "📝 Manage Tasks"
     ])
 
     # ------------------ TAB 1: Project Setup ------------------
@@ -143,7 +145,7 @@ def generate_schedule_ui():
             st.subheader("⚙️ Discipline-Zone Configuration")
             st.markdown("Define which zones should be executed in parallel and which sequentially per discipline.")
             discipline_zone_cfg = render_discipline_zone_config(disciplines, list(zones_floors.keys()))
-            st.session_state["discipline_zone_cfg"] = discipline_zone_cfg  # Fixed typo: discipline_zone_cf -> discipline_zone_cfg
+            st.session_state["discipline_zone_cfg"] = discipline_zone_cfg
         
         with st.expander("📝 Project Information", expanded=False):
             project_name = st.text_input("Project Name", value="My Construction Project")
@@ -168,21 +170,23 @@ def generate_schedule_ui():
         if st.button("🎯 Generate All Templates"):
             try:
                 with st.spinner("🔄 Preparing professional templates..."):
-                    # FIX: Check if zones are configured first
                     zones_floors = st.session_state.get("zones_floors", {})
                     if not zones_floors:
                         st.error("❌ Please configure zones and floors in Project Setup first")
                         st.stop()
                     
-                    # FIX: Use user-modified tasks from database instead of hardcoded BASE_TASKS
+                    # ✅ FIXED: Use UserBaseTaskDB instead of BaseTaskDB
+                    current_user_id = st.session_state["user"].get("id", 1)  # Default to user_id=1
                     with SessionLocal() as session:
-                        user_tasks = session.query(BaseTaskDB).filter(BaseTaskDB.included==True).all()
+                        user_tasks = session.query(UserBaseTaskDB).filter(
+                            UserBaseTaskDB.user_id == current_user_id,
+                            UserBaseTaskDB.included == True
+                        ).all()
                         
                         if not user_tasks:
-                            st.warning("⚠️ No tasks found in database. Using default tasks.")
+                            st.warning("⚠️ No user tasks found. Using default tasks.")
                             tasks_dict = BASE_TASKS
                         else:
-                            # Convert user tasks to the expected format
                             tasks_dict = organize_tasks_by_discipline(user_tasks)
                     
                     # Generate templates with USER tasks
@@ -195,7 +199,7 @@ def generate_schedule_ui():
                         "qty_file": qty_file,
                         "worker_file": worker_file,
                         "equip_file": equip_file,
-                        "user_tasks_used": len(user_tasks) > 0  # Track if user tasks were used
+                        "user_tasks_used": len(user_tasks) > 0
                     })
                     st.success("✅ All templates generated successfully!")
                     if st.session_state.get("user_tasks_used"):
@@ -261,9 +265,6 @@ def generate_schedule_ui():
         st.subheader("🚀 Generate Project Schedule")
         all_ready = all([quantity_file, worker_file, equipment_file])
         
-        # Get current user for user-specific scheduling
-        current_user = st.session_state["user"]["username"]
-        
         if all_ready:
             # Enhanced Configuration Summary
             with st.expander("📋 Configuration Summary", expanded=True):
@@ -278,39 +279,41 @@ def generate_schedule_ui():
                     st.metric("Total Floors", total_floors)
                 
                 with col3:
+                    # ✅ FIXED: Use UserBaseTaskDB
+                    current_user_id = st.session_state["user"].get("id", 1)
                     with SessionLocal() as session:
-                        task_count = session.query(BaseTaskDB).filter(BaseTaskDB.included==True).count()
+                        task_count = session.query(UserBaseTaskDB).filter(
+                            UserBaseTaskDB.user_id == current_user_id,
+                            UserBaseTaskDB.included == True
+                        ).count()
                     st.metric("Tasks", task_count)
                 
                 with col4:
-                    st.metric("User", current_user)
+                    st.metric("User", st.session_state["user"]["username"])
                 
                 # Show task source information
                 with SessionLocal() as session:
-                    user_modified_tasks = session.query(BaseTaskDB).filter(
-                        BaseTaskDB.included == True,
-                        BaseTaskDB.created_by_user == True
+                    user_modified_tasks = session.query(UserBaseTaskDB).filter(
+                        UserBaseTaskDB.user_id == current_user_id,
+                        UserBaseTaskDB.included == True,
+                        UserBaseTaskDB.created_by_user == True
                     ).count()
                 
                 if user_modified_tasks > 0:
-                    st.success(f"🎯 Using {user_modified_tasks} user-modified tasks + default tasks")
+                    st.success(f"🎯 Using {user_modified_tasks} user-modified tasks")
                 else:
                     st.info("🔧 Using default task library")
 
             create_info_card("Ready to Generate", "Click below to generate the schedule using your configuration.", "✅", "success")
             
-            # FIX: Enhanced schedule generation with user tasks
+            # FIXED: Enhanced schedule generation with user tasks
             if st.button("🚀 Generate Optimized Schedule"):
                 try:
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     steps = [
-                        "📊 Parsing Excel files...",
-                        "🔍 Validating data...", 
-                        "🏗️ Loading user task configuration...",
-                        "🔄 Generating tasks with hybrid dependencies...",
-                        "📈 Generating reports...",
-                        "🎉 Finalizing output..."
+                        "📊 Parsing Excel files...", "🔍 Validating data...", "🏗️ Loading user task configuration...",
+                        "🔄 Generating tasks with hybrid dependencies...", "📈 Generating reports...", "🎉 Finalizing output..."
                     ]
                     
                     # Variables to store parsed data
@@ -322,27 +325,27 @@ def generate_schedule_ui():
                         time.sleep(0.3)
                         
                         if i == 0:
-                            # Parse quantity matrix
                             df_quantity = pd.read_excel(quantity_file)
                             quantity_used = parse_quantity_excel(df_quantity)
                             
                         elif i == 1:
-                            # Parse worker data
                             df_worker = pd.read_excel(worker_file)
                             workers_used = parse_worker_excel(df_worker)
                             
                         elif i == 2:
-                            # Parse equipment data  
                             df_equip = pd.read_excel(equipment_file)
                             equipment_used = parse_equipment_excel(df_equip)
                             
                         elif i == 3:
-                            # KEY FIX: Load user tasks and generate schedule with hybrid approach
+                            # ✅ FIXED: Use UserBaseTaskDB
+                            current_user_id = st.session_state["user"].get("id", 1)
                             with SessionLocal() as session:
-                                user_tasks = session.query(BaseTaskDB).filter(BaseTaskDB.included==True).all()
+                                user_tasks = session.query(UserBaseTaskDB).filter(
+                                    UserBaseTaskDB.user_id == current_user_id,
+                                    UserBaseTaskDB.included == True
+                                ).all()
                                 
                                 if user_tasks:
-                                    # Convert to expected format
                                     user_tasks_dict = organize_tasks_by_discipline(user_tasks)
                                     st.info(f"📋 Using {len(user_tasks)} user-configured tasks")
                                 else:
@@ -357,7 +360,7 @@ def generate_schedule_ui():
                                 workers_dict=workers_used,
                                 equipment_dict=equipment_used,
                                 discipline_zone_cfg=st.session_state.get("discipline_zone_cfg"),
-                                base_tasks_override=user_tasks_dict  # Pass user tasks to scheduler
+                                base_tasks_override=user_tasks_dict
                             )
                             
                         elif i == 4:
@@ -377,7 +380,6 @@ def generate_schedule_ui():
                     
                     progress_bar.progress(100)
                     
-                    # Success message based on task source
                     if st.session_state.get("user_tasks_used"):
                         status_text.subheader("✅ Schedule Generated with Your Custom Tasks!")
                     else:
@@ -432,8 +434,7 @@ def generate_schedule_ui():
 
     # ------------------ TAB 5: Manage Tasks ------------------
     with tab5:
-        # Use the enhanced user-specific task management
-        user_specific_task_management()
+        user_specific_task_management(
 def monitor_project_ui():
     """
     Streamlit UI for project monitoring. Only runs analysis when both files are present.
