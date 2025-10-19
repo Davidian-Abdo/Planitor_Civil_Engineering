@@ -1,12 +1,8 @@
+
+
 """
 app.py - Construction Project Management Application
-Main Streamlit entry point with production-ready features:
-- Advanced backend initialization
-- Session management with timeout
-- Role-based navigation
-- Error handling and logging
-- Health monitoring
-- Integrated with existing ui_pages.py
+CORRECTED VERSION with proper imports
 """
 
 import streamlit as st
@@ -24,8 +20,11 @@ from backend import init_backend, SessionLocal, logger, check_backend_health
 from backend.auth import AuthManager, require_role
 from backend.db_models import UserDB
 
-# UI imports - using your existing ui_pages functions
-from ui_pages import generate_schedule_ui, monitor_project_ui, login_ui
+# ✅ FIXED: Correct UI imports - use the functions that actually exist
+from ui_pages import scheduling_page, monitoring_page, login_ui, main_ui
+
+# ✅ FIXED: Import scheduling functions
+from scheduling_engin import run_schedule, analyze_project_progress
 
 # ------------------------- CONFIGURATION -------------------------
 APP_TITLE = "🏗️ Construction Project Manager Pro"
@@ -69,7 +68,7 @@ def check_session_timeout():
 
 # ------------------------- AUTHENTICATION -------------------------
 def login_user(username: str, password: str) -> bool:
-    """Authenticate user and set session state - integrated with your auth system"""
+    """Authenticate user and set session state"""
     try:
         user = auth_manager.login(username, password)
         
@@ -185,22 +184,24 @@ def render_dashboard():
 
 @require_role("admin", "manager")
 def render_scheduling():
-    """Scheduling page - uses your existing generate_schedule_ui"""
+    """Scheduling page - uses your existing scheduling_page"""
     update_activity()
     st.title("📋 Project Scheduling")
     try:
-        generate_schedule_ui()
+        # ✅ FIXED: Use scheduling_page instead of generate_schedule_ui
+        scheduling_page()
     except Exception as e:
         st.error(f"❌ Scheduling interface error: {e}")
         logger.error(f"Scheduling page error: {e}")
 
 @require_role("admin", "manager", "worker", "viewer")
 def render_monitoring():
-    """Monitoring page - uses your existing monitor_project_ui"""
+    """Monitoring page - uses your existing monitoring_page"""
     update_activity()
     st.title("📈 Project Monitoring")
     try:
-        monitor_project_ui()
+        # ✅ FIXED: Use monitoring_page instead of monitor_project_ui
+        monitoring_page()
     except Exception as e:
         st.error(f"❌ Monitoring interface error: {e}")
         logger.error(f"Monitoring page error: {e}")
@@ -229,25 +230,6 @@ def render_user_management():
                 })
             
             st.dataframe(user_data, use_container_width=True)
-            
-            # User actions
-            col1, col2 = st.columns(2)
-            with col1:
-                with st.expander("➕ Add New User"):
-                    with st.form("add_user_form"):
-                        new_username = st.text_input("Username")
-                        new_email = st.text_input("Email")
-                        new_full_name = st.text_input("Full Name")
-                        new_role = st.selectbox("Role", ["admin", "manager", "worker", "viewer"])
-                        new_password = st.text_input("Password", type="password")
-                        
-                        if st.form_submit_button("Create User"):
-                            # Add user creation logic here
-                            st.success(f"User {new_username} created successfully!")
-            
-            with col2:
-                st.info("**User Management**")
-                st.write("Admins can create, edit, and deactivate user accounts.")
         else:
             st.info("No users found in the system.")
             
@@ -266,7 +248,7 @@ def render_system_health():
         with st.spinner("Checking system health..."):
             health_status = check_backend_health()
             st.session_state.health_status = health_status
-            time.sleep(1)  # Simulate check
+            time.sleep(1)
     
     health = st.session_state.health_status or {}
     
@@ -282,44 +264,16 @@ def render_system_health():
         with col2:
             st.metric("Users", health.get("details", {}).get("user_count", "N/A"))
             st.metric("Tasks", health.get("details", {}).get("task_count", "N/A"))
-        
-        # Detailed status
-        st.subheader("Component Status")
-        
-        status_items = [
-            ("Database Connection", health.get("database_connection", False)),
-            ("Tables Accessible", health.get("tables_accessible", False)),
-            ("Default Users", health.get("default_users_exist", False)),
-            ("Default Tasks", health.get("default_tasks_exist", False)),
-            ("Defaults Integration", health.get("defaults_integration", False))
-        ]
-        
-        for item_name, status in status_items:
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                st.write(item_name)
-            with col2:
-                if status:
-                    st.success("✅")
-                else:
-                    st.error("❌")
-        
-        # Error details
-        if health.get("error"):
-            st.error(f"Health check error: {health['error']}")
     
     # System information
     with st.expander("📊 System Information"):
         st.write(f"**App Version:** {APP_VERSION}")
         st.write(f"**Python Version:** {sys.version.split()[0]}")
         st.write(f"**Streamlit Version:** {st.__version__}")
-        st.write(f"**Session Timeout:** {auth_manager.session_timeout_minutes} minutes")
         
         if auth_manager.is_authenticated():
             user = auth_manager.get_current_user()
             st.write(f"**Logged in as:** {user['username']} ({user['role']})")
-            last_activity = datetime.now() - st.session_state.last_activity
-            st.write(f"**Last activity:** {int(last_activity.total_seconds() // 60)} minutes ago")
 
 def render_landing_page():
     """Professional landing page for non-authenticated users"""
@@ -339,53 +293,15 @@ def render_landing_page():
         ✅ **Progress Monitoring** - Real-time S-curve analysis and deviation tracking  
         ✅ **Role-Based Access** - Secure collaboration for your entire team  
         ✅ **French Standards** - Built for French construction industry requirements  
-        
-        *Trusted by construction professionals for complex project management.*
         """)
     
     with col2:
-        st.image("https://via.placeholder.com/300x200/1f77b4/ffffff?text=Construction+App", 
-                caption="Manage Complex Construction Projects")
-        
         st.info("""
         **Demo Credentials:**
         - Admin: `admin` / `admin123`
         - Manager: `manager` / `manager123` 
         - Worker: `worker` / `worker123`
         - Viewer: `viewer` / `viewer123`
-        """)
-    
-    # Feature highlights
-    st.markdown("---")
-    st.subheader("🎯 Key Features")
-    
-    feature_col1, feature_col2, feature_col3 = st.columns(3)
-    
-    with feature_col1:
-        st.markdown("""
-        **📋 Smart Scheduling**
-        - Critical Path Method (CPM)
-        - Resource leveling
-        - Cross-floor dependencies
-        - Delay management
-        """)
-    
-    with feature_col2:
-        st.markdown("""
-        **📈 Progress Tracking** 
-        - S-curve analysis
-        - Progress deviation
-        - Earned value management
-        - Custom reporting
-        """)
-    
-    with feature_col3:
-        st.markdown("""
-        **👥 Team Collaboration**
-        - Role-based permissions
-        - Audit trails
-        - Multi-user support
-        - Secure data access
         """)
 
 # ------------------------- MAIN APPLICATION -------------------------
@@ -416,12 +332,7 @@ def main():
         page_title="Construction Project Manager",
         page_icon="🏗️",
         layout="wide",
-        initial_sidebar_state="expanded",
-        menu_items={
-            'Get Help': 'https://github.com/your-repo/construction-manager',
-            'Report a bug': "https://github.com/your-repo/construction-manager/issues",
-            'About': f"{APP_TITLE} v{APP_VERSION}"
-        }
+        initial_sidebar_state="expanded"
     )
     
     # Initialize session state
@@ -434,7 +345,7 @@ def main():
     # Check session timeout
     check_session_timeout()
     
-    # Render authentication sidebar (using your existing login_ui)
+    # Render authentication sidebar
     login_ui()
     
     # Main application logic
@@ -451,8 +362,8 @@ def main():
                 "📈 Monitoring": render_monitoring,
                 "👥 User Management": render_user_management,
                 "⚙️ System Health": render_system_health,
-                "📋 Projects": render_dashboard,  # Placeholder
-                "👷 My Tasks": render_dashboard   # Placeholder
+                "📋 Projects": render_dashboard,
+                "👷 My Tasks": render_dashboard
             }
             
             page_handler = page_handlers.get(selected_page, render_dashboard)
@@ -462,7 +373,6 @@ def main():
             except Exception as e:
                 st.error(f"❌ Error loading page: {e}")
                 logger.error(f"Page handler error for {selected_page}: {e}")
-                st.info("Please try refreshing the page or contact support if the issue persists.")
         
         else:
             # User is not logged in - show landing page
@@ -482,27 +392,12 @@ def handle_global_errors():
         st.error("""
         🚨 **Application Error**
         
-        The application encountered an unexpected error. Please:
-        
-        1. **Refresh the page** to restart the application
-        2. **Check your internet connection**
-        3. **Clear your browser cache** if the problem persists
-        4. **Contact support** with the error details below
+        The application encountered an unexpected error. Please refresh the page.
         """)
         
-        # Show error details in expander for debugging
-        with st.expander("Technical Details (for support)"):
-            st.code(f"""
-            Error: {str(e)}
-            Time: {datetime.now().isoformat()}
-            App Version: {APP_VERSION}
-            """)
-        
-        # Option to reset session
         if st.button("🔄 Reset Application"):
             st.session_state.clear()
             st.rerun()
 
-# ------------------------- APPLICATION START -------------------------
 if __name__ == "__main__":
     handle_global_errors()
