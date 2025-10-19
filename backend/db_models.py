@@ -45,8 +45,8 @@ class UserDB(Base):
         CheckConstraint("char_length(username) >= 3", name="username_min_length"),
     )
 
-    # FIXED: Relationships - UserBaseTaskDB is now the main task model
-    tasks_created = relationship("UserBaseTaskDB", back_populates="creator")
+    # FIXED: Relationships - UserBaseTaskDB is now the main task model 
+    tasks_created = relationship("UserBaseTaskDB", foreign_keys="UserBaseTaskDB.creator_id", back_populates="creator")
     schedules = relationship("ScheduleDB", back_populates="user")
     monitorings = relationship("MonitoringDB", back_populates="user")
 
