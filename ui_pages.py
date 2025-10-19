@@ -435,7 +435,7 @@ def generate_schedule_ui():
 
     # ------------------ TAB 5: Manage Tasks ------------------
     with tab5:
-        user_specific_task_management(
+        user_specific_task_management()
 def monitor_project_ui():
     """
     Streamlit UI for project monitoring. Only runs analysis when both files are present.
