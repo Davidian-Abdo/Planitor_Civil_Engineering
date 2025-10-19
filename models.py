@@ -1,3 +1,5 @@
+
+
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict
 from datetime import datetime
@@ -8,7 +10,6 @@ class DisciplineZoneConfig:
     discipline: str
     zone_groups: list  # List of lists of zone names [[zoneA, zoneB], [zoneC]]
     strategy: str = "sequential"  # "sequential" or "fully_parallel"
-
 
 @dataclass
 class WorkerResource:
@@ -21,7 +22,6 @@ class WorkerResource:
     overtime_factor: float = 1.5
     efficiency: float = 1.0
 
-
 @dataclass
 class EquipmentResource:
     name: str
@@ -32,7 +32,6 @@ class EquipmentResource:
     type: str = "general"
     efficiency: float = 1.0
 
-
 @dataclass
 class BaseTask:
     id: str
@@ -40,14 +39,18 @@ class BaseTask:
     discipline: str
     resource_type: str                   # logical resource name (worker pool) for worker/hybrid tasks      
     predecessors: List[str] = field(default_factory=list)
-    task_type: str = "worker"# worker | equipment | hybrid
+    task_type: str = "worker"            # worker | equipment | hybrid
     min_crews_needed: Optional[int] = None
     min_equipment_needed: Optional[Dict[str, int]] = None
     base_duration: int = None
     risk_factor: float = 1.0
-    repeat_on_floor: bool=True
+    repeat_on_floor: bool = True
     included: bool = True
     delay: int = 0
+    # ✅ ADDED: Cross-floor configuration fields
+    cross_floor_dependencies: List = field(default_factory=list)
+    applies_to_floors: str = "auto"  # auto, ground_only, above_ground, all_floors
+    cross_floor_repetition: bool = True
 
 @dataclass
 class Task:
@@ -60,8 +63,8 @@ class Task:
     resource_type: str
     min_crews_needed: Optional[int] = None
     min_equipment_needed: Optional[Dict[str, int]] = None
-    allocated_crews: int=None
-    allocated_equipments:Optional[Dict[str, int]] = None
+    allocated_crews: int = None
+    allocated_equipments: Optional[Dict[str, int]] = None
     task_type: str = "worker"
     quantity: float = 250.0
     risk_factor: float = 1.0
@@ -75,6 +78,11 @@ class Task:
     latest_start: Optional[datetime] = None
     latest_finish: Optional[datetime] = None
     delay: int = 0
+    # ✅ ADDED: Critical fields for scheduling engine compatibility
+    cross_floor_dependencies: List = field(default_factory=list)
+    applies_to_floors: str = "auto"
+    cross_floor_repetition: bool = True
+    nominal_duration: Optional[int] = None  # Used by AdvancedScheduler for fallback
     
     def __post_init__(self):
         if self.constraints is None:
