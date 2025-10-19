@@ -150,7 +150,7 @@ def _create_default_tasks_from_defaults():
         from defaults import BASE_TASKS
         
         with SessionLocal() as session:
-            task_count = session.query(UserBaseTaskDB).count()
+            task_count = session.query(UserBaseTaskDB).count()  # ✅ FIXED: Changed from BaseTaskDB to UserBaseTaskDB
             
             if task_count == 0:
                 logger.info("Creating default construction tasks from defaults.py BASE_TASKS...")
@@ -165,8 +165,8 @@ def _create_default_tasks_from_defaults():
                             logger.debug(f"Skipping excluded task: {base_task.name}")
                             continue
                         
-                        # Convert BaseTask from defaults.py to BaseTaskDB
-                        db_task = UserBaseTaskDB(
+                        # Convert BaseTask from defaults.py to UserBaseTaskDB
+                        db_task = UserBaseTaskDB(  # ✅ FIXED: Changed from BaseTaskDB to UserBaseTaskDB
                             name=base_task.name,
                             discipline=discipline,
                             resource_type=base_task.resource_type,
@@ -189,20 +189,14 @@ def _create_default_tasks_from_defaults():
                 logger.info(f"✅ Created {created_tasks} default tasks from defaults.py")
                 
                 # Verify task creation
-                final_count = session.query(BaseTaskDB).count()
+                final_count = session.query(UserBaseTaskDB).count()  # ✅ FIXED: Changed from BaseTaskDB to UserBaseTaskDB
                 logger.info(f"✅ Database now contains {final_count} total tasks")
-                
             else:
                 logger.info(f"✅ {task_count} tasks already exist in database")
                 
-    except ImportError as e:
-        logger.error(f"❌ Could not import defaults.py: {e}")
-        logger.error("Make sure defaults.py exists in the root directory with BASE_TASKS defined")
-        _create_fallback_tasks()
-        
     except Exception as e:
-        logger.error(f"❌ Error creating tasks from defaults.py: {e}")
-        _create_fallback_tasks()
+        logger.warning(f"Could not create default tasks: {e}")
+
 
 def _create_fallback_tasks():
     """Create minimal fallback tasks if defaults.py integration fails"""
