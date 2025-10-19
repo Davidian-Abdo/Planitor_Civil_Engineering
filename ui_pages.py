@@ -21,9 +21,6 @@ from helpers import generate_quantity_template, generate_worker_template, genera
 from reporting import generate_interactive_gantt, MonitoringReporter  # ✅ ADDED MonitoringReporter
 from defaults import workers, equipment, BASE_TASKS, disciplines
 
-# ✅ FIXED: Initialize constraint manager properly
-constraint_manager = SimpleConstraintManager()
-
 # ------------------------- LOGIN / LOGOUT -------------------------
 def login_ui():
     st.sidebar.title("🔐 User Login")
