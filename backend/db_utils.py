@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from backend.db_models import User, BaseTaskDB, ScheduleDB, MonitoringDB
+from backend.db_models import User, UserBaseTaskDB, ScheduleDB, MonitoringDB
 from typing import List, Optional
 
 # ---------------- User CRUD ----------------
