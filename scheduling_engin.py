@@ -641,59 +641,59 @@ def run_schedule(zone_floors, quantity_matrix, start_date, workers_dict=None,
                        equipment_dict=None, holidays=None, discipline_zone_cfg=None,
                        base_tasks_override=None, user_id=None):
     """
-    Run scheduling with HYBRID approach:
-    - Predefined cross_floor_links + User modifications
-    
-    Args:
-        base_tasks_override: User-modified tasks (optional)
-        user_id: For user-specific task loading (optional)
+    Run scheduling with HYBRID approach with enhanced error handling
     """
     from reporting import BasicReporter
     
-    # Use defaults if no user input
-    workers_used = workers_dict if workers_dict else workers
-    equipment_used = equipment_dict if equipment_dict else equipment
-    
-    # DECISION: Use user tasks or default tasks?
-    if base_tasks_override is not None:
-        base_tasks_to_use = base_tasks_override
-        print("✅ Using provided user tasks")
-    elif user_id is not None:
-        # Load user-specific tasks from database
-        base_tasks_to_use = get_user_tasks_for_scheduling(user_id)
-        print(f"✅ Using tasks for user: {user_id}")
-    else:
-        base_tasks_to_use = BASE_TASKS
-        print("✅ Using default tasks")
-    
-    # Generate tasks with HYBRID function
-    tasks = generate_tasks(
-        base_tasks_to_use, 
-        zone_floors, 
-        cross_floor_links,  # Your predefined dependencies
-        discipline_zone_cfg=discipline_zone_cfg
-    )
+    try:
+        # Use defaults if no user input
+        workers_used = workers_dict if workers_dict else workers
+        equipment_used = equipment_dict if equipment_dict else equipment
+        
+        # DECISION: Use user tasks or default tasks?
+        if base_tasks_override is not None:
+            base_tasks_to_use = base_tasks_override
+            logger.info("✅ Using provided user tasks")
+        elif user_id is not None:
+            # Load user-specific tasks from database
+            base_tasks_to_use = get_user_tasks_for_scheduling(user_id)
+            logger.info(f"✅ Using tasks for user: {user_id}")
+        else:
+            base_tasks_to_use = BASE_TASKS
+            logger.info("✅ Using default tasks")
+        
+        # Generate tasks with HYBRID function
+        tasks = generate_tasks(
+            base_tasks_to_use, 
+            zone_floors, 
+            cross_floor_links,
+            discipline_zone_cfg=discipline_zone_cfg
+        )
 
-    # Validate tasks and patch missing data
-    tasks, workers_used, equipment_used, quantity_matrix = validate_tasks(
-        tasks, workers_used, equipment_used, quantity_matrix
-    )
+        # Validate tasks and patch missing data
+        tasks, workers_used, equipment_used, quantity_matrix = validate_tasks(
+            tasks, workers_used, equipment_used, quantity_matrix
+        )
 
-    # Calendar and duration
-    workweek = [0, 1, 2, 3, 4, 5]
-    start_date = pd.Timestamp(start_date)
-    cal = AdvancedCalendar(start_date=start_date, holidays=holidays, workweek=workweek)
-    dur_calc = DurationCalculator(workers_used, equipment_used, quantity_matrix)
+        # Calendar and duration
+        workweek = [0, 1, 2, 3, 4, 5]
+        start_date = pd.Timestamp(start_date)
+        cal = AdvancedCalendar(start_date=start_date, holidays=holidays, workweek=workweek)
+        dur_calc = DurationCalculator(workers_used, equipment_used, quantity_matrix)
 
-    # Scheduler
-    sched = AdvancedScheduler(tasks, workers_used, equipment_used, cal, dur_calc)
-    schedule = sched.generate()
+        # Scheduler
+        sched = AdvancedScheduler(tasks, workers_used, equipment_used, cal, dur_calc)
+        schedule = sched.generate()
 
-    # Reporting
-    reporter = BasicReporter(tasks, schedule, sched.worker_manager, sched.equipment_manager, cal)
-    output_folder = reporter.export_all()
+        # Reporting
+        reporter = BasicReporter(tasks, schedule, sched.worker_manager, sched.equipment_manager, cal)
+        output_folder = reporter.export_all()
 
-    return schedule, output_folder
+        return schedule, output_folder
+        
+    except Exception as e:
+        logger.error(f"Schedule generation failed: {e}")
+        raise
 
 def analyze_project_progress(reference_df: pd.DataFrame, actual_df: pd.DataFrame) -> pd.DataFrame:
     """
