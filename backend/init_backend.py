@@ -56,7 +56,7 @@ def init_backend():
         logger.info("Creating database tables...")
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database tables created/verified")
-        
+        _debug_users_and_passwords()
         # Test database connection
         with SessionLocal() as session:
             session.execute(text("SELECT 1"))
@@ -384,7 +384,20 @@ def get_tasks_by_discipline(discipline):
     except Exception as e:
         logger.error(f"Error getting tasks for discipline {discipline}: {e}")
         return []
-
+def _debug_users_and_passwords():
+    """Debug function to check users and password hashes"""
+    try:
+        with SessionLocal() as session:
+            users = session.query(UserDB).all()
+            logger.info("=== USER DATABASE DEBUG ===")
+            for user in users:
+                logger.info(f"User: {user.username}, Role: {user.role}, Active: {user.is_active}")
+                logger.info(f"Password hash: {user.hashed_password}")
+                logger.info(f"Hash length: {len(user.hashed_password) if user.hashed_password else 'None'}")
+            logger.info("=== END DEBUG ===")
+            
+    except Exception as e:
+        logger.error(f"Debug failed: {e}")
 # ----------------- Exports -----------------
 __all__ = [
     # Core functions
