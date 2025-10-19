@@ -1,6 +1,4 @@
 
-
-
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Float, ForeignKey, Text, JSON,
     CheckConstraint, Index, UniqueConstraint
