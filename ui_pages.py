@@ -47,6 +47,7 @@ def scheduling_page():
 def monitoring_page():
     monitor_project_ui()
 
+constraint_manager = SimpleConstraintManager()
 # ------------------------- MAIN PAGE ROUTER -------------------------
 def main_ui():
     login_ui()  # Sidebar login/logout
