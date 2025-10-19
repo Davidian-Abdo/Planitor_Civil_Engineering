@@ -310,6 +310,13 @@ def initialize_application():
     try:
         if not st.session_state.backend_initialized:
             with st.spinner("🚀 Initializing Construction Manager..."):
+                # ✅ NEW: Run index fix before initialization
+                try:
+                    from fix_indexes import drop_problematic_indexes
+                    drop_problematic_indexes()
+                    logger.info("✅ Duplicate indexes cleaned up")
+                except Exception as e:
+                    logger.warning(f"⚠️ Index cleanup skipped: {e}")
                 init_backend()
                 st.session_state.backend_initialized = True
                 st.session_state.app_ready = True
