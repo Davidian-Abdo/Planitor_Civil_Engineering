@@ -66,6 +66,99 @@ class SimpleConstraintManager:
     def validate_task_data(self, task_data, discipline):
         return []  # No validation errors for now
 
+
+def user_specific_task_management():
+    """Task management for individual users with constraints"""
+    
+    st.subheader("📝 Manage Your Task Library")
+    
+    # Get current user
+    current_user = st.session_state["user"]["username"]
+    user_role = st.session_state["user"]["role"]
+    
+    # Admin can see all users, others only see their own
+    if user_role == "admin":
+        st.info("👑 Admin View: You can manage all user task libraries")
+        all_users = get_all_users()
+        selected_user = st.selectbox("Select User to Manage:", all_users, index=all_users.index(current_user))
+        target_user = selected_user
+    else:
+        target_user = current_user
+        st.info(f"👤 Managing your personal task library")
+    # Two-column layout
+    col_list, col_editor = st.columns([2, 3])
+    with col_list:
+        show_user_task_list(target_user)
+    with col_editor:
+        show_constrained_task_editor(target_user)
+
+def show_user_task_list(user_id): 
+    """Show tasks for specific user with filtering"""
+    st.markdown("### 📋 Your Task Library")
+    
+    # Quick actions
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("➕ New Task", use_container_width=True):
+            st.session_state["creating_new_task"] = True
+    with col2:
+        if st.button("📥 Import from Template", use_container_width=True):
+            show_import_template_modal(user_id)
+    # Filtering
+    search_term = st.text_input("🔍 Search your tasks...", placeholder="Search by name or discipline")
+    discipline_filter = st.multiselect("Filter by discipline:", disciplines, default=[])
+    
+    # Load user's tasks
+    with SessionLocal() as session:
+        user_tasks = session.query(UserBaseTaskDB).filter(
+            UserBaseTaskDB.user_id == user_id
+        ).order_by(UserBaseTaskDB.discipline, UserBaseTaskDB.name).all()
+        
+        # Apply filters
+        if search_term:
+            user_tasks = [t for t in user_tasks if search_term.lower() in t.name.lower()]
+        if discipline_filter:
+            user_tasks = [t for t in user_tasks if t.discipline in discipline_filter]
+        
+        # Display tasks
+        for task in user_tasks:
+            display_user_task_card(task, user_id)
+
+def organize_tasks_by_discipline(user_tasks):
+    """
+    Convert list of BaseTaskDB objects to discipline-organized format
+    expected by template generation and scheduling
+    """
+    tasks_by_discipline = {}
+    
+    for task in user_tasks:
+        if task.discipline not in tasks_by_discipline:
+            tasks_by_discipline[task.discipline] = []
+        
+        # Convert to dictionary format
+        task_dict = {
+            'id': task.id,
+            'name': task.name,
+            'discipline': task.discipline,
+            'resource_type': task.resource_type,
+            'base_duration': task.base_duration,
+            'min_crews_needed': task.min_crews_needed,
+            'min_equipment_needed': task.min_equipment_needed or {},
+            'predecessors': task.predecessors or [],
+            'repeat_on_floor': task.repeat_on_floor,
+            'included': task.included,
+            'delay': task.delay,
+            # Include cross-floor configuration if available
+            'cross_floor_dependencies': getattr(task, 'cross_floor_dependencies', []),
+            'applies_to_floors': getattr(task, 'applies_to_floors', 'auto'),
+            'task_type': getattr(task, 'task_type', 'worker')
+        }
+        
+        tasks_by_discipline[task.discipline].append(task_dict)
+    
+    return tasks_by_discipline
+
+
 def show_constrained_task_editor(user_id):
     """Task editor with constraint validation"""
     editing_task_id = st.session_state.get("editing_task_id")
