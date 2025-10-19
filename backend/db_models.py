@@ -1,4 +1,3 @@
-
 from sqlalchemy import (
     Column, Integer, String, Boolean, DateTime, Float, ForeignKey, Text, JSON,
     CheckConstraint, Index, UniqueConstraint
@@ -11,7 +10,7 @@ Base = declarative_base()
 # Constants for validation
 VALID_ROLES = ['admin', 'manager', 'worker', 'viewer']
 VALID_TASK_TYPES = ['worker', 'equipment', 'hybrid']
-VALID_RESOURCE_TYPES = ['BétonArmée', 'Férailleur', 'ConstMéttalique', 'plaquiste', 'Etanchiété', 'Revetement', 'peinture']
+VALID_RESOURCE_TYPES = ['BétonArmée', 'Férrailleur', 'ConstMéttalique', 'plaquiste', 'Etanchiété', 'Revetement', 'peinture']
 VALID_DISCIPLINES = ['Préliminaire', 'Terrassement', 'Fondations', 'Structure', 'VRD', 'Finitions']
 VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']
 
@@ -86,7 +85,7 @@ class UserBaseTaskDB(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Table constraints and indexes
+    # ✅ FIXED: Removed duplicate index definition
     __table_args__ = (
         CheckConstraint(f"resource_type IN ({', '.join(repr(r) for r in VALID_RESOURCE_TYPES)})", name="valid_resource_type"),
         CheckConstraint(f"task_type IN ({', '.join(repr(r) for r in VALID_TASK_TYPES)})", name="valid_task_type"),
@@ -96,7 +95,7 @@ class UserBaseTaskDB(Base):
         CheckConstraint("delay >= 0", name="non_negative_delay"),
         Index('idx_task_discipline_included', 'discipline', 'included'),
         Index('idx_task_creator', 'creator_id', 'created_at'),
-        Index('idx_task_resource_type', 'resource_type', 'included'),
+        Index('idx_task_resource_type', 'resource_type', 'included'),  # ✅ Only one instance
         Index('idx_user_tasks_user', 'user_id', 'included'),  # ✅ Added user index
         UniqueConstraint('user_id', 'name', 'discipline', name='unique_user_task_per_discipline'),  # ✅ User-specific uniqueness
     )
