@@ -3,10 +3,68 @@ from defaults import disciplines
 from models import DisciplineZoneConfig
 
 
+def get_all_users():
+    """Get list of all users for admin management"""
+    return [st.session_state["user"]["username"]]
 
+def save_user_task(task, is_new, user_id, task_name, discipline, resource_type, 
+                  base_duration, min_crews_needed, cross_floor_config, selected_predecessors):
+    """Save user task to database"""
+    try:
+        with SessionLocal() as session:
+            if is_new:
+                new_task = UserBaseTaskDB(
+                    user_id=user_id,
+                    name=task_name,
+                    discipline=discipline,
+                    resource_type=resource_type,
+                    base_duration=base_duration,
+                    min_crews_needed=min_crews_needed,
+                    created_by_user=True
+                )
+                session.add(new_task)
+            else:
+                # Update existing task
+                task.name = task_name
+                task.discipline = discipline
+                task.resource_type = resource_type
+                task.base_duration = base_duration
+                task.min_crews_needed = min_crews_needed
+            
+            session.commit()
+            st.success("✅ Task saved successfully!")
+            st.session_state.pop("editing_task_id", None)
+            st.session_state.pop("creating_new_task", None)
+            st.rerun()
+    except Exception as e:
+        st.error(f"❌ Failed to save task: {e}")
 
+def display_user_task_card(task, user_id):
+    """Display task card in the task list"""
+    with st.container():
+        col1, col2, col3 = st.columns([3, 1, 1])
+        with col1:
+            st.write(f"**{task.name}**")
+            st.caption(f"{task.discipline} • {task.resource_type} • {task.base_duration}d")
+        with col2:
+            st.write(f"👷 {task.min_crews_needed}")
+        with col3:
+            if st.button("✏️", key=f"edit_{task.id}"):
+                st.session_state["editing_task_id"] = task.id
+                st.rerun()
+        st.divider()
 
+def show_import_template_modal(user_id):
+    """Show import template modal"""
+    st.info("📥 Import functionality would go here")
 
+# SIMPLIFIED CONSTRAINT MANAGER PLACEHOLDER
+class SimpleConstraintManager:
+    def get_default_value(self, constraint_type, discipline):
+        return 1.0 if constraint_type == "duration" else 1
+    
+    def validate_task_data(self, task_data, discipline):
+        return []  # No validation errors for now
 
 
 
