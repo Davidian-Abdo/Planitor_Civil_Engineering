@@ -393,15 +393,15 @@ def main():
 
     # ✅ TEMPORARY: Add migration page for admin
     user_role = st.session_state["user"]["role"]
-    if user_role == "admin" and st.sidebar.button("🚀 Run Migration (Admin Only)"):
-        migration_page()
-        return
+    
     # Check session timeout
     check_session_timeout()
     
     # Render authentication sidebar
     login_ui()
-    
+    if user_role == "admin" and st.sidebar.button("🚀 Run Migration (Admin Only)"):
+        migration_page()
+        return
     # Main application logic
     if st.session_state.app_ready:
         if auth_manager.is_authenticated():
