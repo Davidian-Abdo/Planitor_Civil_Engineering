@@ -127,7 +127,8 @@ class UserBaseTaskDB(Base):
         Index('idx_task_creator', 'creator_id', 'created_at'),
         Index('idx_task_resource_type', 'resource_type', 'included'),
         Index('idx_user_tasks_user', 'user_id', 'included'),
-        UniqueConstraint('user_id', 'name', 'discipline', 'sub_discipline', name='unique_user_task_per_discipline_sub'),  # ✅ UPDATED
+        UniqueConstraint('user_id', 'name', 'discipline', 'sub_discipline', name='unique_user_task_per_discipline_sub'),
+        )
 class DisciplineZoneConfigDB(Base):
     __tablename__ = "discipline_zone_config"
 
