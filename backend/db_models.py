@@ -83,7 +83,8 @@ class UserBaseTaskDB(Base):
     creator_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
+    
+    creator = relationship("UserDB", foreign_keys=[creator_id])
     # ✅ FIXED: Remove resource_type constraint, keep only essential constraints
     __table_args__ = (
         CheckConstraint(f"task_type IN ({', '.join(repr(r) for r in VALID_TASK_TYPES)})", name="valid_task_type"),
