@@ -440,11 +440,31 @@ BASE_TASKS = {
 }
 
 ACCELERATION_FACTORS = {
-    "Terrassement": {"factor": 3.0, "max_crews": 5, "constraints": ["space_availability", "equipment_limits"]},
-    "FondationsProfondes": {"factor": 2.0, "max_crews": 4, "constraints": ["curing_time", "sequential_work", "specialized_equipment"]},
-    "GrosŒuvre": {"factor": 1.5, "max_crews": 3, "constraints": ["curing_time", "structural_sequence"]},
-    "SecondŒuvre": {"factor": 1.2, "max_crews": 4, "constraints": ["space_limitation", "trade_coordination"]},
-    "default": {"factor": 1.0, "max_crews": 2, "constraints": ["quality_requirements"]}
+    "Terrassement": {
+        "factor": 3.0, 
+        "max_crews": 5, 
+        "constraints": ["space_availability", "equipment_limits"]
+    },
+    "FondationsProfondes": {
+        "factor": 2.0, 
+        "max_crews": 4, 
+        "constraints": ["curing_time", "sequential_work", "specialized_equipment"]
+    },
+    "GrosŒuvre": {
+        "factor": 1.5, 
+        "max_crews": 3, 
+        "constraints": ["curing_time", "structural_sequence"]
+    },
+    "SecondŒuvre": {
+        "factor": 1.2, 
+        "max_crews": 4, 
+        "constraints": ["space_limitation", "trade_coordination"]
+    },
+    "default": {
+        "factor": 1.0, 
+        "max_crews": 2, 
+        "constraints": ["quality_requirements"]
+    }
 }
 
 CROSS_FLOOR_DEPENDENCIES = {
@@ -473,42 +493,106 @@ QUALITY_GATES = {
     "SO-01": "Enclosed Building Status",
 }
 
-cross_floor_links = {
-    "2.1": ["1.2"],
-    "4.1": ["4.7"],
-    "4.2": ["4.7"],
-    "4.3": ["4.7"],  # Columns(F+1) depend on Slab(F)
-    "4.8": ["4.7"],
-    "5.1": ["4.7"],  # Masonry(F) depends on Slab(F) (cross-floor carryover)
-    # Waterproofing(F) depends on Masonry(F-1) if needed
-    # Add more as project requires
-}
-# ... keep BASE_TASKS, acceleration, cross_floor_links, and SHIFT_CONFIG as in your version ...
-# No need to repeat here unless you want me to check internal logic consistency too.
-
-
-# =======================
-# SHIFT AND ACCELERATION
-# =======================
-acceleration = {
-    "Terrassement": {"factor": 3.0},
-    "Fondations": {"factor": 2.0},
-    "Superstructure": {"factor": 1.0},
-    "default": {"factor": 1.0},
-}
-disciplines=["Préliminaire","Terrassement","Fondations","Superstructure","SecondeOeuvre"]
-cross_floor_links = {
-    "2.1": ["1.2"],
-    "4.1": ["4.7"],
-    "4.2": ["4.7"],
-    "4.3": ["4.7"],
-    "4.8": ["4.7"],
-    "5.1": ["4.7"],
-}
-
 SHIFT_CONFIG = {
     "default": 1.0,
     "Terrassement": 2.0,
-    "GrosOeuvres": 1.5,
-    "SecondeOeuvres": 1.0,
+    "FondationsProfondes": 1.8,
+    "GrosŒuvre": 1.5,
+    "SecondŒuvre": 1.0,
 }
+
+# =======================
+# HELPER FUNCTIONS
+# =======================
+
+def get_discipline_hierarchy() -> Dict[str, Any]:
+    """Get the complete discipline hierarchy with sub-disciplines."""
+    return VALID_DISCIPLINES.copy()
+
+def get_resource_types() -> List[str]:
+    """Get all valid resource types."""
+    return VALID_RESOURCE_TYPES.copy()
+
+def validate_task_configuration() -> Dict[str, Any]:
+    """
+    Validate the default task configuration for consistency.
+    
+    Returns:
+        Dict with validation results and any issues found.
+    """
+    issues = []
+    warnings = []
+    
+    # Check task ID uniqueness
+    task_ids = []
+    for discipline, tasks in BASE_TASKS.items():
+        for task in tasks:
+            if task.id in task_ids:
+                issues.append(f"Duplicate task ID: {task.id}")
+            task_ids.append(task.id)
+    
+    # Check resource type validity
+    for discipline, tasks in BASE_TASKS.items():
+        for task in tasks:
+            if task.resource_type not in VALID_RESOURCE_TYPES:
+                warnings.append(f"Unknown resource type '{task.resource_type}' in task {task.id}")
+    
+    # Check discipline validity
+    for discipline in BASE_TASKS.keys():
+        if discipline not in VALID_DISCIPLINES:
+            warnings.append(f"Unknown discipline '{discipline}' in BASE_TASKS")
+    
+    return {
+        "valid": len(issues) == 0,
+        "task_count": len(task_ids),
+        "issues": issues,
+        "warnings": warnings,
+        "disciplines_covered": list(BASE_TASKS.keys()),
+        "resource_types_used": list(set(task.resource_type for tasks in BASE_TASKS.values() for task in tasks))
+    }
+
+# Auto-validate on import
+_CONFIG_VALIDATION = validate_task_configuration()
+
+if not _CONFIG_VALIDATION["valid"]:
+    print("⚠️  Configuration validation issues found:")
+    for issue in _CONFIG_VALIDATION["issues"]:
+        print(f"   ❌ {issue}")
+
+if _CONFIG_VALIDATION["warnings"]:
+    print("ℹ️  Configuration warnings:")
+    for warning in _CONFIG_VALIDATION["warnings"]:
+        print(f"   ⚠️  {warning}")
+
+# =======================
+# MODULE EXPORTS
+# =======================
+
+__all__ = [
+    # Resources
+    'workers',
+    'equipment',
+    
+    # Task definitions
+    'BASE_TASKS',
+    
+    # Scheduling configuration
+    'ACCELERATION_FACTORS',
+    'CROSS_FLOOR_DEPENDENCIES',
+    'QUALITY_GATES',
+    'SHIFT_CONFIG',
+    
+    # Validation constants
+    'VALID_DISCIPLINES',
+    'VALID_RESOURCE_TYPES',
+    
+    # Helper functions
+    'get_discipline_hierarchy',
+    'get_resource_types',
+    'validate_task_configuration',
+    
+    # Validation results
+    '_CONFIG_VALIDATION'
+]
+
+print(f"✅ Defaults module loaded: {_CONFIG_VALIDATION['task_count']} tasks across {len(BASE_TASKS)} disciplines")
