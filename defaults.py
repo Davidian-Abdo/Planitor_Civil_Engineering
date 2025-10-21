@@ -26,7 +26,13 @@ VALID_DISCIPLINES = {
     'Lots techniques': ['CFO','CFA' , 'Ventillation', 'climatisation','Plomberie'],
     'AménagementsExtérieurs': ['VRD', 'EspacesVerts']
 }
-
+disciplines=['Préliminaires',
+    'Terrassement',
+    'FondationsProfondes',
+    'GrosŒuvre',
+    'SecondŒuvre' ,
+    'Lots techniques',
+    'AménagementsExtérieurs']
 VALID_RESOURCE_TYPES = [
     'BétonArmé', 'Ferrailleur', 'Plaquiste', 'Maçon', 
     'Étanchéiste', 'Staffeur', 'Peintre', 'Topographe', 'Charpentier', 
@@ -561,7 +567,7 @@ BASE_TASKS = {
 
 # ... (rest of the configuration remains the same - ACCELERATION_FACTORS, CROSS_FLOOR_DEPENDENCIES, QUALITY_GATES, SHIFT_CONFIG, etc.)
 
-ACCELERATION_FACTORS = {
+acceleration = {
     "Terrassement": {
         "factor": 3.0, 
         "max_crews": 5, 
@@ -589,7 +595,7 @@ ACCELERATION_FACTORS = {
     }
 }
 
-CROSS_FLOOR_DEPENDENCIES = {
+cross_floor_links= {
     # Deep foundations to superstructure
     "GO-F-01": ["FDP-08", "FDP-12", "FDP-17"],
     
