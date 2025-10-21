@@ -559,6 +559,57 @@ def enhanced_task_management():
     # User has tasks - show full management interface
     show_task_management_interface(current_user_id, user_role)
 
+def save_enhanced_task(session, task, is_new, user_id, name, discipline, resource_type, 
+                      base_duration, min_crews_needed, delay, min_equipment_needed, 
+                      predecessors, cross_floor_config, task_type, repeat_on_floor, included=True):
+    """Save task with all parameters - UPDATED for None durations"""
+    try:
+        if is_new:
+            new_task = UserBaseTaskDB(
+                user_id=user_id,
+                name=name,
+                discipline=discipline,
+                resource_type=resource_type,
+                task_type=task_type,
+                base_duration=base_duration,  # ✅ Can be None for calculated durations
+                min_crews_needed=min_crews_needed,
+                min_equipment_needed=min_equipment_needed,
+                predecessors=predecessors,
+                delay=delay,
+                repeat_on_floor=repeat_on_floor,
+                included=included,
+                cross_floor_dependencies=cross_floor_config.get('cross_floor_dependencies', []),
+                applies_to_floors=cross_floor_config.get('applies_to_floors', 'auto'),
+                created_by_user=True
+            )
+            session.add(new_task)
+        else:
+            # Update existing task
+            task.name = name
+            task.discipline = discipline
+            task.resource_type = resource_type
+            task.task_type = task_type
+            task.base_duration = base_duration  # ✅ Can be None
+            task.min_crews_needed = min_crews_needed
+            task.min_equipment_needed = min_equipment_needed
+            task.predecessors = predecessors
+            task.delay = delay
+            task.repeat_on_floor = repeat_on_floor
+            task.included = included
+            task.cross_floor_dependencies = cross_floor_config.get('cross_floor_dependencies', [])
+            task.applies_to_floors = cross_floor_config.get('applies_to_floors', 'auto')
+        
+        session.commit()
+        
+        duration_info = "calculated by engine" if base_duration is None else f"fixed at {base_duration} days"
+        logger.info(f"✅ Task {'created' if is_new else 'updated'}: {name} ({duration_info})")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to save task: {e}")
+        session.rollback()
+        return False
+
 def show_empty_state(user_id, username, user_role):
     """Show empty state with import options - ENHANCED VERSION"""
     st.warning("🎯 No personal tasks found in your library.")
@@ -631,25 +682,25 @@ def show_task_management_interface(user_id, user_role):
     if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
         st.markdown("---")
         with SessionLocal() as session:
-            display_task_editor(session, user_id)
 
 def display_task_table(tasks, user_id):
     """Display tasks as a professional styled table with actions"""
     # Convert to DataFrame for nice display
     task_data = []
     for task in tasks:
+        duration_display = "🔄 Calculated" if task.base_duration is None else f"⏱️ {task.base_duration}d"
+        
         task_data.append({
             "ID": task.id,
             "Name": task.name,
             "Discipline": task.discipline,
             "Resource": task.resource_type,
-            "Days": task.base_duration,
+            "Duration": duration_display,  # ✅ Show duration type
             "Crews": task.min_crews_needed,
             "Equipment": len(task.min_equipment_needed) if task.min_equipment_needed else 0,
             "Predecessors": len(task.predecessors or []),
             "Cross-Floor": len(task.cross_floor_dependencies or [])
         })
-    
     df = pd.DataFrame(task_data)
     
     # Display dataframe
@@ -706,9 +757,10 @@ def display_task_table(tasks, user_id):
                             st.session_state[f"confirm_delete_{task.id}"] = True
                             st.warning("Click again to confirm deletion")
                 st.divider()
+                
 
 def display_task_editor(session, user_id):
-    """Comprehensive task editor with all parameters"""
+    """Comprehensive task editor with duration type selection"""
     editing_task_id = st.session_state.get("editing_task_id")
     creating_new = st.session_state.get("creating_new_task", False)
     
@@ -744,36 +796,77 @@ def display_task_editor(session, user_id):
                 index=disciplines.index(task.discipline) if task and task.discipline in disciplines else 0
             )
         with col3:
-            resource_type = st.selectbox(
-                "Resource Type *", 
-                ["worker", "equipment", "hybrid"],
-                index=["worker", "equipment", "hybrid"].index(task.resource_type) 
-                if task and task.resource_type in ["worker", "equipment", "hybrid"] else 0
+            # ✅ FLEXIBLE: Free-text resource type input
+            current_resource = task.resource_type if task else "BétonArmée"
+            resource_type = st.text_input(
+                "Resource Type *",
+                value=current_resource,
+                placeholder="e.g., Topograph, Maçonnerie, etc.",
+                help="Enter any resource type. Users can create custom types."
             )
         
-        # Duration & Resource Requirements
-        st.markdown("### ⏱️ Duration & Resources")
+        # Duration Configuration with Type Selection
+        st.markdown("### ⏱️ Duration Configuration")
+        
+        # Get current duration info
+        if task and task.base_duration is None:
+            current_duration_type = "calculated"
+            current_duration_value = None
+        else:
+            current_duration_type = "fixed" 
+            current_duration_value = float(task.base_duration) if task and task.base_duration else 1.0
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            duration_type = st.radio(
+                "Duration Type:",
+                options=["calculated", "fixed"],
+                format_func=lambda x: {
+                    "calculated": "🔄 Calculated by Scheduling Engine",
+                    "fixed": "⏱️ Fixed Duration (Manual)"
+                }[x],
+                index=0 if current_duration_type == "calculated" else 1,
+                help="""
+                **Calculated**: Scheduling engine will calculate duration based on quantities and productivity rates.
+                **Fixed**: You set a specific duration that won't be changed by the engine.
+                """
+            )
+        
+        with col2:
+            if duration_type == "fixed":
+                base_duration = st.number_input(
+                    "Fixed Duration (days) *",
+                    min_value=0.1, max_value=365.0, step=0.5,
+                    value=current_duration_value,
+                    help="Manual duration that won't be calculated by scheduling engine"
+                )
+            else:
+                base_duration = None
+                st.info("🔄 Duration will be calculated by scheduling engine based on quantities and productivity rates")
+        
+        # Resource Requirements
+        st.markdown("### 👥 Resource Requirements")
         col1, col2, col3 = st.columns(3)
         with col1:
-            base_duration = st.number_input(
-                "Base Duration (days) *",
-                min_value=0.1, max_value=365.0, step=0.5,
-                value=float(task.base_duration) if task and task.base_duration else 1.0,
-                help="Estimated duration in working days"
-            )
-        with col2:
             min_crews_needed = st.number_input(
                 "Minimum Crews *",
                 min_value=1, max_value=50, step=1,
                 value=task.min_crews_needed if task and task.min_crews_needed else 1,
                 help="Number of crew teams required"
             )
-        with col3:
+        with col2:
             delay = st.number_input(
                 "Delay (days)",
                 min_value=0, max_value=30, step=1,
                 value=task.delay if task and task.delay else 0,
                 help="Mandatory delay after predecessor completion"
+            )
+        with col3:
+            task_type = st.selectbox(
+                "Task Type",
+                ["worker", "equipment", "hybrid"],
+                index=["worker", "equipment", "hybrid"].index(task.task_type) 
+                if task and task.task_type else 0
             )
         
         # Equipment Requirements
@@ -820,31 +913,39 @@ def display_task_editor(session, user_id):
         with st.expander("⚙️ Advanced Settings"):
             col1, col2 = st.columns(2)
             with col1:
-                task_type = st.selectbox(
-                    "Task Type",
-                    ["worker", "equipment", "hybrid"],
-                    index=["worker", "equipment", "hybrid"].index(task.task_type) 
-                    if task and task.task_type else 0
-                )
-            with col2:
                 repeat_on_floor = st.checkbox(
                     "Repeat on each floor",
                     value=task.repeat_on_floor if task else True
                 )
+            with col2:
+                included = st.checkbox(
+                    "Include in scheduling",
+                    value=task.included if task else True,
+                    help="Uncheck to exclude this task from scheduling"
+                )
         
         # Form Actions
         st.markdown("---")
+        
+        # Show summary of choices
+        if duration_type == "calculated":
+            st.info("🎯 **This task will have its duration calculated automatically by the scheduling engine**")
+        else:
+            st.info(f"🎯 **This task has a fixed duration of {base_duration} days**")
+        
         col1, col2, col3 = st.columns([1, 1, 2])
         with col1:
             if st.form_submit_button("💾 Save Task", use_container_width=True):
                 if not task_name:
                     st.error("❌ Task name is required")
+                elif not resource_type:
+                    st.error("❌ Resource type is required")
                 else:
                     success = save_enhanced_task(
                         session, task, is_new, user_id, task_name, discipline, 
                         resource_type, base_duration, min_crews_needed, delay,
                         min_equipment_needed, predecessor_ids, cross_floor_config,
-                        task_type, repeat_on_floor
+                        task_type, repeat_on_floor, included
                     )
                     if success:
                         st.session_state.pop("editing_task_id", None)
@@ -860,13 +961,13 @@ def display_task_editor(session, user_id):
                 success = duplicate_task(task, user_id, modifications={
                     'name': f"{task_name} (Copy)",
                     'base_duration': base_duration,
-                    'min_crews_needed': min_crews_needed
+                    'min_crews_needed': min_crews_needed,
+                    'resource_type': resource_type
                 })
                 if success:
                     st.session_state.pop("editing_task_id", None)
                     st.session_state.pop("creating_new_task", None)
                     st.rerun()
-
 def debug_task_system():
     """Debug function to check what's happening with tasks"""
     with SessionLocal() as session:
