@@ -13,7 +13,7 @@ from backend.db_models import UserBaseTaskDB
 from backend.init_backend import check_backend_health
 
 # Core application imports
-from scheduling_engine import run_schedule, analyze_project_progress
+from scheduling_engin import run_schedule, analyze_project_progress
 from ui_helpers import (
     inject_ui_styles, create_metric_row, create_info_card,
     render_upload_section, render_discipline_zone_config, 
