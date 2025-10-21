@@ -221,7 +221,7 @@ def check_and_migrate_database():
     try:
         with SessionLocal() as session:
             # Just verify basic database connectivity
-            session.execute("SELECT 1")
+            session.execute(sa.text("SELECT 1"))
             
             # Check if sub_discipline column exists (simple version)
             from sqlalchemy import inspect
