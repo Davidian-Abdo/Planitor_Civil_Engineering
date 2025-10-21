@@ -15,7 +15,7 @@ from ui_helpers import (
     # Task management functions
     get_all_users, save_user_task, display_user_task_card,
     show_user_task_list, organize_tasks_by_discipline,
-    user_specific_task_management, show_constrained_task_editor
+   show_constrained_task_editor, enhanced_task_management
 )
 from helpers import generate_quantity_template, generate_worker_template, generate_equipment_template, parse_quantity_excel, parse_worker_excel, parse_equipment_excel
 from reporting import generate_interactive_gantt, MonitoringReporter  # ✅ ADDED MonitoringReporter
@@ -432,7 +432,7 @@ def generate_schedule_ui():
 
     # ------------------ TAB 5: Manage Tasks ------------------
     with tab5:
-        user_specific_task_management()
+        enhanced_task_management()
 def monitor_project_ui():
     """
     Streamlit UI for project monitoring. Only runs analysis when both files are present.
