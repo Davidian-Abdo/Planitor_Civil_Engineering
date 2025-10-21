@@ -141,6 +141,53 @@ def create_default_users():
         logger.warning(f"Could not create default users: {e}")
         return False
 
+
+def migrate_null_duration_constraint():
+    """Migrate base_duration column to allow NULL values"""
+    try:
+        with engine.connect() as conn:
+            # Check if the old NOT NULL constraint exists
+            result = conn.execute(sa.text("""
+                SELECT constraint_name 
+                FROM information_schema.table_constraints 
+                WHERE table_name = 'user_base_tasks' 
+                AND constraint_name = 'user_base_tasks_base_duration_check'
+            """)).fetchone()
+            
+            if result:
+                # Drop the old constraint if it exists
+                conn.execute(sa.text("""
+                    ALTER TABLE user_base_tasks 
+                    DROP CONSTRAINT user_base_tasks_base_duration_check
+                """))
+                logger.info("✅ Dropped old base_duration constraint")
+            
+            # Check if the new constraint already exists
+            result = conn.execute(sa.text("""
+                SELECT constraint_name 
+                FROM information_schema.table_constraints 
+                WHERE table_name = 'user_base_tasks' 
+                AND constraint_name = 'positive_or_null_duration'
+            """)).fetchone()
+            
+            if not result:
+                # Add the new constraint that allows NULL
+                conn.execute(sa.text("""
+                    ALTER TABLE user_base_tasks 
+                    ADD CONSTRAINT positive_or_null_duration 
+                    CHECK (base_duration >= 0 OR base_duration IS NULL)
+                """))
+                logger.info("✅ Added new NULL-allowing constraint")
+            else:
+                logger.info("✅ NULL-allowing constraint already exists")
+            
+            conn.commit()
+            return True
+            
+    except Exception as e:
+        logger.error(f"❌ NULL duration migration failed: {e}")
+        return False
+
 def migrate_database():
     """Safe database migration with existence checks"""
     try:
@@ -154,7 +201,11 @@ def migrate_database():
         if not safe_create_indexes():
             return False
         
-        # Step 3: Create default users if none exist
+        # Step 3: Migrate NULL duration constraint
+        if not migrate_null_duration_constraint():
+            logger.warning("NULL duration migration had issues, but continuing...")
+        
+        # Step 4: Create default users if none exist
         if not create_default_users():
             logger.warning("User creation had issues, but continuing...")
         
@@ -170,6 +221,7 @@ def migrate_database():
     except Exception as e:
         logger.error(f"❌ Database migration failed: {e}")
         return False
+
 
 if __name__ == "__main__":
     success = migrate_database()
