@@ -532,7 +532,7 @@ def render_discipline_zone_config(disciplines, zones, key_prefix="disc_zone_cfg"
     
     return cfg
 
-# ADD THESE NEW FUNCTIONS:
+
 
 def enhanced_task_management():
     """Professional task management with auto-creation of default tasks"""
@@ -597,6 +597,7 @@ def show_task_management_interface(user_id, user_role):
     if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
         st.markdown("---")
         with SessionLocal() as session:
+            display_task_editor(session, user_id)  # Added missing function call
 
 def display_task_table(tasks, user_id):
     """Display tasks as a professional styled table with actions - SHOWS DURATION TYPE"""
@@ -945,6 +946,7 @@ def display_task_editor(session, user_id):
                     st.session_state.pop("editing_task_id", None)
                     st.session_state.pop("creating_new_task", None)
                     st.rerun()
+
 def debug_task_system():
     """Debug function to check what's happening with tasks"""
     with SessionLocal() as session:
@@ -979,11 +981,9 @@ def create_default_tasks_now():
                 
                 if created_count > 0:
                     st.success(f"✅ Created {created_count} system default tasks!")
-                    
                     # Now copy them to current user
                     from backend.database_operations import copy_default_tasks_to_user
                     user_count = copy_default_tasks_to_user(current_user_id)
-                    
                     if user_count > 0:
                         st.success(f"✅ Copied {user_count} tasks to your personal library!")
                         st.balloons()
@@ -991,8 +991,7 @@ def create_default_tasks_now():
                     else:
                         st.info("Tasks created but couldn't copy to user (might already exist)")
                 else:
-                    st.error("❌ Could not create default tasks")
-                    
+                    st.error("❌ Could not create default tasks") 
         except Exception as e:
             st.error(f"❌ Error: {e}")
             import traceback
