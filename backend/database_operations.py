@@ -3,6 +3,7 @@ Enhanced database operations for task management
 """
 import streamlit as st  # ← ADD THIS FOR DEBUGGING
 from sqlalchemy.orm import Session
+import sqlalchemy as sa
 from backend.database import SessionLocal
 from backend.db_models import UserBaseTaskDB, UserDB
 import logging
