@@ -122,125 +122,26 @@ def copy_default_tasks_to_user(user_id: int, session) -> int:
         logger.error(f"Error copying default tasks to user {user_id}: {e}")
         return 0
 def create_default_tasks_from_defaults_py(user_id=None):
-    """Create default tasks from defaults.py - INCLUDES sub_discipline"""
+    """Create default tasks from defaults.py by calling copy_default_tasks_to_user"""
     try:
         with SessionLocal() as session:
             if user_id is None:
                 admin_user = session.query(UserDB).filter_by(username="admin").first()
                 if admin_user:
                     user_id = admin_user.id
-                    st.write(f"✅ Using admin user (ID: {user_id}) for system tasks")
+                    logger.info(f"Using admin user (ID: {user_id}) for system tasks")
                 else:
-                    st.error("❌ No admin user found and no user_id provided")
+                    logger.error("No admin user found and no user_id provided")
                     return 0
             
-            try:
-                from defaults import BASE_TASKS
-                st.write(f"✅ Successfully imported BASE_TASKS with {sum(len(tasks) for tasks in BASE_TASKS.values())} total tasks")
-            except ImportError as e:
-                st.error(f"❌ Failed to import from defaults.py: {e}")
-                return 0
-            
-            created_count = 0
-            failed_count = 0
-            
-            for discipline, tasks in BASE_TASKS.items():
-                st.write(f"🔄 Processing {discipline} with {len(tasks)} tasks")
-                
-                for base_task in tasks:
-                    if not getattr(base_task, 'included', True):
-                        st.write(f"   ⏭️ Skipping excluded task: {base_task.name}")
-                        continue
-                    
-                    try:
-                        # ✅ GET sub_discipline from base_task
-                        sub_discipline = getattr(base_task, 'sub_discipline', None)
-                        
-                        base_duration = getattr(base_task, 'base_duration', None)
-                        if base_duration is not None:
-                            try:
-                                base_duration = float(base_duration)
-                            except (TypeError, ValueError):
-                                base_duration = None
-                        
-                        min_equipment_needed = getattr(base_task, 'min_equipment_needed', {})
-                        if min_equipment_needed:
-                            fixed_equipment = {}
-                            for key, value in min_equipment_needed.items():
-                                if isinstance(key, tuple):
-                                    fixed_key = "|".join(key)
-                                    fixed_equipment[fixed_key] = value
-                                    st.write(f"   🔄 Fixed tuple key: {key} → '{fixed_key}'")
-                                else:
-                                    fixed_equipment[key] = value
-                            min_equipment_needed = fixed_equipment
-                        
-                        resource_type = getattr(base_task, 'resource_type', 'BétonArmée')
-                        
-                        min_crews_needed = getattr(base_task, 'min_crews_needed', None)
-                        if min_crews_needed is None:
-                            min_crews_needed = 1
-                        else:
-                            min_crews_needed = int(min_crews_needed)
-                        
-                        delay = getattr(base_task, 'delay', None)
-                        if delay is None:
-                            delay = 0
-                        else:
-                            delay = int(delay)
-                        
-                        predecessors = getattr(base_task, 'predecessors', [])
-                        repeat_on_floor = bool(getattr(base_task, 'repeat_on_floor', True))
-                        included = bool(getattr(base_task, 'included', True))
-                        task_type = getattr(base_task, 'task_type', 'worker')
-                        
-                        # ✅ CREATE task with sub_discipline
-                        db_task = UserBaseTaskDB(
-                            user_id=user_id,
-                            name=getattr(base_task, 'name', 'Unknown Task'),
-                            discipline=discipline,
-                            sub_discipline=sub_discipline,  # ✅ NEW: Include sub_discipline
-                            resource_type=resource_type,
-                            task_type=task_type,
-                            base_duration=base_duration,
-                            min_crews_needed=min_crews_needed,
-                            min_equipment_needed=min_equipment_needed,
-                            predecessors=predecessors,
-                            repeat_on_floor=repeat_on_floor,
-                            included=included,
-                            delay=delay,
-                            cross_floor_dependencies=getattr(base_task, 'cross_floor_dependencies', []),
-                            applies_to_floors=getattr(base_task, 'applies_to_floors', 'auto'),
-                            created_by_user=False
-                        )
-                        
-                        session.add(db_task)
-                        created_count += 1
-                        
-                        sub_disc_info = f" | Sub: {sub_discipline}" if sub_discipline else ""
-                        duration_info = "🔄 Calculated" if base_duration is None else f"⏱️ {base_duration}d"
-                        st.write(f"   ✅ Added: {base_task.name} ({discipline}{sub_disc_info}) - {duration_info}")
-                        
-                    except Exception as task_error:
-                        failed_count += 1
-                        st.error(f"   ❌ Failed to add task {base_task.name}: {task_error}")
-                        continue
-            
-            try:
-                session.commit()
-                st.success(f"🎉 Successfully created {created_count} default tasks! ({failed_count} failed)")
-                return created_count
-            except Exception as commit_error:
-                st.error(f"❌ Failed to commit tasks to database: {commit_error}")
-                session.rollback()
-                return 0
+            # Call the core copying function
+            tasks_created = copy_default_tasks_to_user(user_id, session)
+            logger.info(f"Created {tasks_created} default tasks for user {user_id}")
+            return tasks_created
             
     except Exception as e:
-        st.error(f"❌ Critical error in create_default_tasks_from_defaults_py: {e}")
-        import traceback
-        st.code(traceback.format_exc())
+        logger.error(f"Error in create_default_tasks_from_defaults_py: {e}")
         return 0
-
 def duplicate_task(original_task, user_id, modifications=None):
     """Duplicate a task with optional modifications - INCLUDES sub_discipline"""
     try:
