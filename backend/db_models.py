@@ -9,10 +9,10 @@ from backend.database import Base
 # Constants for validation
 VALID_ROLES = ['admin', 'manager', 'worker', 'viewer']
 VALID_TASK_TYPES = ['worker', 'equipment', 'hybrid']
-VALID_RESOURCE_TYPES = ['BétonArmée', 'Férrailleur', 'ConstMéttalique', 'plaquiste', 'Etanchiété', 'Revetement', 'peinture']
-VALID_DISCIPLINES = ['Préliminaire', 'Terrassement', 'Fondations', 'Structure', 'VRD', 'Finitions']
-VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']
+VALID_RESOURCE_TYPES = ['BétonArmée', 'Férrailleur', 'ConstMéttalique', 'plaquiste', 'Maçon', 'Etanchiété', 'Revetement', 'Peintre', 'Topograph', 'charpentier', 'Soudeur', 'Agent de Netoyage', 'Ascensoriste']
 
+VALID_DISCIPLINES = ['Préliminaire', 'Terrassement', 'Fondations profonds','souténement temporaire','Souténement permanant','Etanchéité', 'Gros-Oeuvres', 'VRD', 'Maçonnerie', 'cloisennement', 'Faux-plafond', 'Revetement', 'Peinture', 'CFO-CFA', 'Lots fluides', "Installation d'ascenseurs", 'Aménagement extérieur']
+VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']',
 class LoginAttemptDB(Base):
     __tablename__ = "login_attempts"
     id = Column(Integer, primary_key=True)
