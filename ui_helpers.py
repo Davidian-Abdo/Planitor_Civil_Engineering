@@ -559,91 +559,6 @@ def enhanced_task_management():
     # User has tasks - show full management interface
     show_task_management_interface(current_user_id, user_role)
 
-def save_enhanced_task(session, task, is_new, user_id, name, discipline, resource_type, 
-                      base_duration, min_crews_needed, delay, min_equipment_needed, 
-                      predecessors, cross_floor_config, task_type, repeat_on_floor, included=True):
-    """Save task with all parameters - UPDATED for None durations"""
-    try:
-        if is_new:
-            new_task = UserBaseTaskDB(
-                user_id=user_id,
-                name=name,
-                discipline=discipline,
-                resource_type=resource_type,
-                task_type=task_type,
-                base_duration=base_duration,  # ✅ Can be None for calculated durations
-                min_crews_needed=min_crews_needed,
-                min_equipment_needed=min_equipment_needed,
-                predecessors=predecessors,
-                delay=delay,
-                repeat_on_floor=repeat_on_floor,
-                included=included,
-                cross_floor_dependencies=cross_floor_config.get('cross_floor_dependencies', []),
-                applies_to_floors=cross_floor_config.get('applies_to_floors', 'auto'),
-                created_by_user=True
-            )
-            session.add(new_task)
-        else:
-            # Update existing task
-            task.name = name
-            task.discipline = discipline
-            task.resource_type = resource_type
-            task.task_type = task_type
-            task.base_duration = base_duration  # ✅ Can be None
-            task.min_crews_needed = min_crews_needed
-            task.min_equipment_needed = min_equipment_needed
-            task.predecessors = predecessors
-            task.delay = delay
-            task.repeat_on_floor = repeat_on_floor
-            task.included = included
-            task.cross_floor_dependencies = cross_floor_config.get('cross_floor_dependencies', [])
-            task.applies_to_floors = cross_floor_config.get('applies_to_floors', 'auto')
-        
-        session.commit()
-        
-        duration_info = "calculated by engine" if base_duration is None else f"fixed at {base_duration} days"
-        logger.info(f"✅ Task {'created' if is_new else 'updated'}: {name} ({duration_info})")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to save task: {e}")
-        session.rollback()
-        return False
-
-def show_empty_state(user_id, username, user_role):
-    """Show empty state with import options - ENHANCED VERSION"""
-    st.warning("🎯 No personal tasks found in your library.")
-    
-    # FIRST: Show the one-time creation option
-    create_default_tasks_now()
-    
-    st.markdown("---")
-    st.markdown("### Or choose another option:")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("#### 🆕 Create Fresh")
-        st.markdown("""
-        - Start from scratch
-        - Complete control
-        - Build custom library
-        """)
-        if st.button("✨ Create First Task", use_container_width=True, key="create_first"):
-            st.session_state["creating_new_task"] = True
-            st.session_state["editing_task_id"] = None
-            st.rerun()
-    
-    with col2:
-        st.markdown("#### 📋 Use Templates")
-        st.markdown("""
-        - Import from Excel
-        - Bulk creation
-        - Standardized formats
-        """)
-        if st.button("📊 Import from Template", use_container_width=True, key="import_template"):
-            show_import_template_modal(user_id)
-
 def show_task_management_interface(user_id, user_role):
     """Show full task management interface"""
     # Top action bar
@@ -684,26 +599,37 @@ def show_task_management_interface(user_id, user_role):
         with SessionLocal() as session:
 
 def display_task_table(tasks, user_id):
-    """Display tasks as a professional styled table with actions"""
+    """Display tasks as a professional styled table with actions - SHOWS DURATION TYPE"""
+    if not tasks:
+        st.info("📭 No tasks found matching your criteria.")
+        return
+    
     # Convert to DataFrame for nice display
     task_data = []
     for task in tasks:
-        duration_display = "🔄 Calculated" if task.base_duration is None else f"⏱️ {task.base_duration}d"
+        # Determine duration display
+        if task.base_duration is None:
+            duration_display = "🔄 Calculated"
+            duration_tooltip = "Duration will be calculated by scheduling engine"
+        else:
+            duration_display = f"⏱️ {task.base_duration}d"
+            duration_tooltip = "Fixed duration (manual)"
         
         task_data.append({
             "ID": task.id,
             "Name": task.name,
             "Discipline": task.discipline,
             "Resource": task.resource_type,
-            "Duration": duration_display,  # ✅ Show duration type
+            "Duration": duration_display,
             "Crews": task.min_crews_needed,
             "Equipment": len(task.min_equipment_needed) if task.min_equipment_needed else 0,
             "Predecessors": len(task.predecessors or []),
             "Cross-Floor": len(task.cross_floor_dependencies or [])
         })
+    
     df = pd.DataFrame(task_data)
     
-    # Display dataframe
+    # Display dataframe with custom column config
     st.dataframe(
         df,
         use_container_width=True,
@@ -712,8 +638,9 @@ def display_task_table(tasks, user_id):
             "ID": st.column_config.NumberColumn("ID", width="small"),
             "Name": st.column_config.TextColumn("Task Name", width="large"),
             "Discipline": st.column_config.TextColumn("Discipline", width="medium"),
-            "Resource": st.column_config.TextColumn("Resource", width="small"),
-            "Days": st.column_config.NumberColumn("Days", width="small"),
+            "Resource": st.column_config.TextColumn("Resource", width="medium"),
+            "Duration": st.column_config.TextColumn("Duration", width="small", 
+                                                  help="🔄 = Calculated by engine, ⏱️ = Fixed duration"),
             "Crews": st.column_config.NumberColumn("Crews", width="small"),
             "Equipment": st.column_config.NumberColumn("Equipment", width="small"),
             "Predecessors": st.column_config.NumberColumn("Predecessors", width="small"),
@@ -728,8 +655,14 @@ def display_task_table(tasks, user_id):
         col = cols[idx % 4]
         with col:
             with st.container():
-                st.markdown(f"**{task.name}**")
-                st.caption(f"{task.discipline} • {task.resource_type} • {task.base_duration}d")
+                # Show duration type indicator
+                duration_badge = "🔄" if task.base_duration is None else "⏱️"
+                st.markdown(f"**{task.name}** {duration_badge}")
+                st.caption(f"{task.discipline} • {task.resource_type}")
+                if task.base_duration is not None:
+                    st.caption(f"Fixed: {task.base_duration}d")
+                else:
+                    st.caption("Calculated by engine")
                 
                 # Action buttons
                 btn_col1, btn_col2, btn_col3 = st.columns(3)
@@ -757,7 +690,51 @@ def display_task_table(tasks, user_id):
                             st.session_state[f"confirm_delete_{task.id}"] = True
                             st.warning("Click again to confirm deletion")
                 st.divider()
-                
+
+def show_empty_state(user_id, username, user_role):
+    """Show empty state with import options - ENHANCED VERSION"""
+    st.warning("🎯 No personal tasks found in your library.")
+    
+    # Show creation options
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### 🚀 Import Default Tasks")
+        st.markdown("""
+        - Get 50+ pre-configured tasks
+        - Mix of calculated and fixed durations
+        - Based on industry standards
+        - Fully customizable afterward
+        """)
+        if st.button("📥 Import Default Tasks", use_container_width=True, key="import_defaults_main"):
+            with st.spinner("Importing default construction tasks..."):
+                created_count = copy_default_tasks_to_user(user_id)
+                if created_count > 0:
+                    st.success(f"✅ Imported {created_count} default tasks to your library!")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error("❌ No default tasks available to import")
+    
+    with col2:
+        st.markdown("#### 🆕 Start Fresh")
+        st.markdown("""
+        - Create tasks from scratch
+        - Choose calculated or fixed durations
+        - Build custom resource types
+        - Complete control
+        """)
+        if st.button("✨ Create First Task", use_container_width=True, key="create_first_main"):
+            st.session_state["creating_new_task"] = True
+            st.session_state["editing_task_id"] = None
+            st.rerun()
+    
+    st.markdown("---")
+    st.info("""
+    💡 **About Duration Types:**
+    - **🔄 Calculated**: Scheduling engine calculates duration based on quantities and productivity rates
+    - **⏱️ Fixed**: You set a specific duration that won't be changed by the engine
+    """)
 
 def display_task_editor(session, user_id):
     """Comprehensive task editor with duration type selection"""
