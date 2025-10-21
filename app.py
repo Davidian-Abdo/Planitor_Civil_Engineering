@@ -50,8 +50,8 @@ auth_manager = AuthManager()
 
 class AppConfig:
     """Application configuration constants"""
-    SESSION_TIMEOUT_MINUTES = 60
-    INIT_RETRY_ATTEMPTS = 3
+    SESSION_TIMEOUT_MINUTES = 150
+    INIT_RETRY_ATTEMPTS = 12
     INIT_RETRY_DELAY = 2
 
 
