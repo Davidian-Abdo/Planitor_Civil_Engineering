@@ -201,252 +201,276 @@ equipment = {
 # BASE TASK DEFINITIONS
 # =======================
 # (kept identical to your original snippet; only fixed typos and syntax)
+
 BASE_TASKS = {
-    "Préliminaire": [
+    "Préliminaires": [
         BaseTask(
-            id="1.1", name="Validation du Plan_implantation_EXE", discipline="Préliminaire",
-            resource_type="BétonArmée", task_type="hybrid",base_duration=0,
-            predecessors=[], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="1.2", name="Bases vie", discipline="Préliminaire",
-            resource_type="BétonArmée", task_type="worker",
-            repeat_on_floor=False,min_crews_needed=2,predecessors=["1.1"]
+            id="PRE-01", name="Validation Plan Implantation EXE", discipline="Préliminaires",
+            sub_discipline="PréparationTerrain", resource_type="Topographe", task_type="supervision", 
+            base_duration=1, predecessors=[], repeat_on_floor=False
         ),
         BaseTask(
-            id="1.3", name="Levée Topographique", discipline="Préliminaire",
-            resource_type="Topograph", predecessors=["1.1"],base_duration=2,
-            repeat_on_floor=False,min_crews_needed=2
+            id="PRE-02", name="Installation Chantier - Bases Vie", discipline="Préliminaires",
+            sub_discipline="InstallationChantier", resource_type="Maçon", task_type="worker", 
+            base_duration=5, repeat_on_floor=False, min_crews_needed=2, predecessors=["PRE-01"]
         ),
-         BaseTask(
-            id="1.4", name="Installations temporaires", discipline="Préliminaire",
-            resource_type="BétonArmée", predecessors=["1.2"],base_duration=4,
-            repeat_on_floor=False,min_crews_needed=2
-        ),
-         BaseTask(
-            id="1.5", name="Signalisation", discipline="Préliminaire",
-            resource_type="BétonArmée", predecessors=["1.1"],base_duration=2,
-            repeat_on_floor=False,min_crews_needed=2
+        BaseTask(
+            id="PRE-03", name="Levé Topographique Initial", discipline="Préliminaires",
+            sub_discipline="PréparationTerrain", resource_type="Topographe", predecessors=["PRE-01"], 
+            base_duration=2, repeat_on_floor=False, min_crews_needed=1
         ),
     ],
+    
     "Terrassement": [
         BaseTask(
-            id="2.1", name="Validation des PLAN_NIVEAUX_EXE", discipline="Terrassement",resource_type="BétonArmée", task_type="equipment",
-             min_crews_needed=2, predecessors=["1.3","1.1"], repeat_on_floor=False,base_duration=0
+            id="TER-01", name="Validation Plans Niveaux EXE", discipline="Terrassement",
+            sub_discipline="Excavation", resource_type="Topographe", task_type="supervision", 
+            base_duration=1, min_crews_needed=1, predecessors=["PRE-03"], repeat_on_floor=False
         ),
         BaseTask(
-            id="2.2", name="Décapage & nettoyage", discipline="Terrassement",resource_type="BétonArmée", task_type="equipment",
-            min_equipment_needed={"Chargeuse": 1,"Bulldozer":1}, min_crews_needed=2, predecessors=["2.1","1.2"], repeat_on_floor=False
+            id="TER-02", name="Décapage Terrain Végétal", discipline="Terrassement",
+            sub_discipline="Décapage", resource_type="ConducteurEngins", task_type="equipment", 
+            base_duration=3, min_equipment_needed={"Bulldozer": 1, "Chargeuse": 1}, 
+            min_crews_needed=2, predecessors=["TER-01"], repeat_on_floor=False
         ),
         BaseTask(
-            id="2.3", name="Déviation et protection réseaux existants", discipline="Terrassement", resource_type="BétonArmée", task_type="equipment",
-            min_equipment_needed={"Pelle": 1,"Chargeuse":1}, min_crews_needed=3,predecessors=["2.2"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="2.4", name="Excavation en masse", discipline="Terrassement", resource_type="BétonArmée", 
-            task_type="equipment", min_equipment_needed={"Chargeuse": 1,("Pelle","Tractopelle"):1},
-             min_crews_needed=3,predecessors=["2.2","2.3"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="2.5", name="Souténement temporaire", discipline="Terrassement", resource_type="BétonArmée",
-             task_type="equipment", min_equipment_needed={("Pelle","Tractopelle"): 1,"Chargeuse":1}, min_crews_needed=3,
-            predecessors=["2.4"], repeat_on_floor=False,included=False
-        ),
-        BaseTask(
-            id="2.6", name="Excavation des tranchées de fondations", discipline="Terrassement", resource_type="BétonArmée",
-              task_type="equipment",min_equipment_needed={"Manito": 1,("Pelle","Tractopelle"):1}, min_crews_needed=3,
-            predecessors=["2.5","2.4"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="2.7", name="Stabilisation et protection des talus", discipline="Terrassement", resource_type="BétonArmée", 
-            task_type="equipment",min_equipment_needed={"Chargeuse": 1}, min_crews_needed=3,
-            predecessors=["2.4"], repeat_on_floor=False,included=False
-        ),
-        BaseTask(
-            id="2.8", name="Aport du matériaux de remblais", discipline="Terrassement", resource_type="BétonArmée", task_type="equipment",
-            min_equipment_needed={"Chargeuse": 1,"Camion":1}, min_crews_needed=3,
-            predecessors=["2.6"], repeat_on_floor=False,
-        ),
-        BaseTask(
-            id="2.9", name="Remblais+Compactage", discipline="Terrassement",resource_type="BétonArmée", 
-            task_type="equipment",min_equipment_needed={"Chargeuse": 1, "Compacteur": 1},
-              min_crews_needed=3,predecessors=["2.8","2.7","2.6"], repeat_on_floor=False ),
-        BaseTask(
-            id="2.10", name="Export du matériaux de déblais", discipline="Terrassement", resource_type="BétonArmée", task_type="equipment",
-            min_equipment_needed={"Chargeuse": 1,"Camion":1}, min_crews_needed=3,predecessors=["2.6"], repeat_on_floor=False
+            id="TER-03", name="Excavation en Masse", discipline="Terrassement",
+            sub_discipline="Excavation", resource_type="ConducteurEngins", task_type="equipment", 
+            base_duration=10, min_equipment_needed={"Pelle Hydraulique": 2, "Chargeuse": 1, "Camion": 3},
+            min_crews_needed=4, predecessors=["TER-02"], repeat_on_floor=False
         ),
     ],
-    "Fondations": [
+    
+    "FondationsProfondes": [
+        # PIEUX FORÉS
         BaseTask(
-            id="3.1", name="Validation du Plans_couffrage/ferraillage_Fondations_EXE", discipline="Fondations",resource_type="BétonArmée",
-            task_type="hybrid",base_duration=0,predecessors=["2.1"], repeat_on_floor=False),
-         BaseTask(
-            id="3.2", name="Préparation de la couche de forme", discipline="Fondations",
-            resource_type="BétonArmée", task_type="hybrid",base_duration=1,
-            min_equipment_needed={"Bétonier": 1}, min_crews_needed=2,
-            predecessors=["3.1","2.6"], repeat_on_floor=False ),
-         BaseTask(
-            id="3.3", name="Préparation du ferraillage des semelles", discipline="Fondations",
-            resource_type="Férrailleur", task_type="worker", min_crews_needed=2,
-            predecessors=["3.1","2.10","2.9"], repeat_on_floor=False ),
+            id="FDP-01", name="Reconnaissance Géotechnique Complémentaire", discipline="FondationsProfondes",
+            sub_discipline="Pieux", resource_type="Foreur", task_type="supervision", base_duration=3,
+            predecessors=["TER-03"], repeat_on_floor=False
+        ),
         BaseTask(
-            id="3.4", name="Coffrage et Pose du armatures des semelles", discipline="Fondations",
-            resource_type="BétonArmée", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=["3.3","3.2"], repeat_on_floor=False),
-         BaseTask(
-            id="3.5", name="Bétonnage des semelles", discipline="Fondations",
-            resource_type="BétonArmée", task_type="hybrid", delay=5,
-            min_equipment_needed={"Pump": 1,"Bétonier":1}, min_crews_needed=2,
-            predecessors=["3.4"], repeat_on_floor=False),
-         BaseTask(
-            id="3.6", name="Préparation du armatures des murs de fondations", discipline="Fondations",
-            resource_type="Férrailleur", task_type="worker", min_crews_needed=2,
-            predecessors=["3.1"], repeat_on_floor=False ),
-         BaseTask(
-            id="3.7", name="Coffrage et pose du armatures des murs de fondations", discipline="Fondations",
-            resource_type="BétonArmée", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=["3.6","3.5"], repeat_on_floor=False),
-         BaseTask(
-            id="3.8", name="Bétonnage des murs de fondations", discipline="Fondations",
-            resource_type="BétonArmée", task_type="hybrid",base_duration=2,
-            min_equipment_needed={"Pump": 1,"Bétonier":1}, min_crews_needed=2,
-            predecessors=["3.7"], repeat_on_floor=False),
-         BaseTask(
-            id="3.9", name="Installation du système de drainage", discipline="Fondations",
-            resource_type="BétonArmée", task_type="hybrid",
-            min_equipment_needed={("Chargeuse","Pelle"):1,"Manito":1}, min_crews_needed=2,
-            predecessors=["3.8"], repeat_on_floor=False),
+            id="FDP-02", name="Implantation Axes Pieux", discipline="FondationsProfondes",
+            sub_discipline="Pieux", resource_type="Topographe", task_type="worker", base_duration=2,
+            min_crews_needed=2, predecessors=["FDP-01"], repeat_on_floor=False
+        ),
         BaseTask(
-            id="3.10", name="Etanchiété des fondations", discipline="Fondations",
-            resource_type="BétonArmée", task_type="worker",
-            min_equipment_needed={"Manito": 1}, min_crews_needed=2,
-            predecessors=["3.9"], repeat_on_floor=False),
+            id="FDP-03", name="Forage des Pieux", discipline="FondationsProfondes",
+            sub_discipline="Pieux", resource_type="Foreur", task_type="equipment", base_duration=15,
+            min_equipment_needed={"Foreuse": 2, "Camion Benne": 3}, min_crews_needed=4,
+            predecessors=["FDP-02"], repeat_on_floor=False
+        ),
         BaseTask(
-            id="3.11", name="Réseau sous dallage", discipline="Fondations",
-            resource_type="BétonArmée", task_type="hybrid",
-            min_equipment_needed={"Manito": 1,"Pelle":1}, min_crews_needed=2,
-            predecessors=["3.10"], repeat_on_floor=False ),
+            id="FDP-04", name="Nettoyage Fond de Fouille", discipline="FondationsProfondes",
+            sub_discipline="Pieux", resource_type="Foreur", task_type="equipment", base_duration=2,
+            min_equipment_needed={"Bennego": 1}, min_crews_needed=2,
+            predecessors=["FDP-03"], repeat_on_floor=False
+        ),
         BaseTask(
-            id="3.12", name="Pose du armatures du dallage", discipline="Fondations",
-            resource_type="Férrailleur", task_type="hybrid",
-            min_equipment_needed={"Manito": 1}, min_crews_needed=2,
-            predecessors=["3.11"], repeat_on_floor=False ),
+            id="FDP-05", name="Contrôle Géotechnique Fond de Fouille", discipline="FondationsProfondes",
+            sub_discipline="Pieux", resource_type="Foreur", task_type="supervision", base_duration=1,
+            min_crews_needed=1, predecessors=["FDP-04"], repeat_on_floor=False
+        ),
         BaseTask(
-            id="3.13", name="Bétonnage du dallage", discipline="Fondations",
-            resource_type="BétonArmée", task_type="hybrid",base_duration=2,
-            min_equipment_needed={"Pump": 1,"Bétonier":1}, min_crews_needed=2,
-            predecessors=["3.12"], repeat_on_floor=False  ),
+            id="FDP-06", name="Ferraillage des Pieux", discipline="FondationsProfondes",
+            sub_discipline="Pieux", resource_type="Ferrailleur", task_type="worker", base_duration=8,
+            min_equipment_needed={"Grue Mobile": 1}, min_crews_needed=3,
+            predecessors=["FDP-05"], repeat_on_floor=False
+        ),
+        BaseTask(
+            id="FDP-07", name="Bétonnage des Pieux par Trémie", discipline="FondationsProfondes",
+            sub_discipline="Pieux", resource_type="BétonArmé", task_type="hybrid", base_duration=6,
+            min_equipment_needed={"Malaxeur": 2, "Pompe à Béton": 1}, min_crews_needed=4,
+            predecessors=["FDP-06"], repeat_on_floor=False
+        ),
+        BaseTask(
+            id="FDP-08", name="Contrôle Béton par Carottage", discipline="FondationsProfondes",
+            sub_discipline="Pieux", resource_type="BétonArmé", task_type="supervision", base_duration=4,
+            min_crews_needed=1, predecessors=["FDP-07"], repeat_on_floor=False, delay=14
+        ),
         
-    ],
-    "Superstructure": [
+        # PAROIS MOULÉES
         BaseTask(
-            id="4.1", name="Validation du Plans_couffrage/ferraillage_EXE", discipline="Superstructure",base_duration=0,
-            resource_type="BétonArmée", task_type="hybrid",min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2, predecessors=["3.1"] ),
+            id="FDP-09", name="Exécution Parois Moulées Guides", discipline="FondationsProfondes",
+            sub_discipline="ParoisMoulées", resource_type="Foreur", task_type="equipment", base_duration=5,
+            min_equipment_needed={"Hydrofraise": 1}, min_crews_needed=3,
+            predecessors=["FDP-02"], repeat_on_floor=False
+        ),
         BaseTask(
-            id="4.2", name="Préparations des armatures des poteaux/voiles", discipline="Superstructure",
-            resource_type="Férrailleur", task_type="hybrid",
-            min_equipment_needed={"Grue mobile": 1, "Pump": 1}, min_crews_needed=2,
-            predecessors=["4.1"]),
+            id="FDP-10", name="Forage Parois Moulées", discipline="FondationsProfondes",
+            sub_discipline="ParoisMoulées", resource_type="Foreur", task_type="equipment", base_duration=12,
+            min_equipment_needed={"Hydrofraise": 1, "Unité de Traitement": 1}, min_crews_needed=4,
+            predecessors=["FDP-09"], repeat_on_floor=False
+        ),
+        BaseTask(
+            id="FDP-11", name="Pose Cage Ferraillage Parois", discipline="FondationsProfondes",
+            sub_discipline="ParoisMoulées", resource_type="Ferrailleur", task_type="worker", base_duration=7,
+            min_equipment_needed={"Grue Mobile": 2}, min_crews_needed=4,
+            predecessors=["FDP-10"], repeat_on_floor=False
+        ),
+        BaseTask(
+            id="FDP-12", name="Bétonnage Parois Moulées", discipline="FondationsProfondes",
+            sub_discipline="ParoisMoulées", resource_type="BétonArmé", task_type="hybrid", base_duration=8,
+            min_equipment_needed={"Tremie": 2, "Malaxeur": 3}, min_crews_needed=5,
+            predecessors=["FDP-11"], repeat_on_floor=False
+        ),
         
-         BaseTask(
-            id="4.3", name="Coffrage+pose des armatures des poteaux/voiles", discipline="Superstructure",
-            resource_type="BétonArmée", task_type="hybrid",
-            min_equipment_needed={"Grue mobile": 1, "Pump": 1}, min_crews_needed=2,
-            predecessors=["4.1", "4.2"]),
+        # MICROPIEUX ET INCLUSIONS
         BaseTask(
-            id="4.4", name="Bétonnage des poteaux/voiles", discipline="Superstructure",
-            resource_type="BétonArmée", task_type="hybrid",base_duration=2,
-            min_equipment_needed={"Grue mobile": 1, "Pump": 1}, min_crews_needed=2,
-            predecessors=["4.3"]),
+            id="FDP-13", name="Forage MicroPieux", discipline="FondationsProfondes",
+            sub_discipline="MicroPieux", resource_type="Foreur", task_type="equipment", base_duration=10,
+            min_equipment_needed={"Foreuse Légère": 3}, min_crews_needed=4,
+            predecessors=["FDP-02"], repeat_on_floor=False
+        ),
         BaseTask(
-            id="4.5", name="Préparation du armatures des poutres/plancher-Haut", discipline="Superstructure",
-            resource_type="Férrailleur", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=["4.1","4.4"] ),
+            id="FDP-14", name="Injection MicroPieux", discipline="FondationsProfondes",
+            sub_discipline="MicroPieux", resource_type="Foreur", task_type="hybrid", base_duration=6,
+            min_equipment_needed={"Unité d'Injection": 2}, min_crews_needed=3,
+            predecessors=["FDP-13"], repeat_on_floor=False
+        ),
         BaseTask(
-            id="4.6", name="Coffrage+pose des armatures des poutres/plancher-Haut", discipline="Superstructure",
-            resource_type="BétonArmée", task_type="hybrid",
-            min_equipment_needed={"Grue mobile": 1, "Pump":1}, min_crews_needed=2,
-            predecessors=["4.5"] ),
-        BaseTask(
-            id="4.7", name="Bétonnages des poutres/planchier-Haut", discipline="Superstructure",
-            resource_type="BétonArmée", task_type="hybrid",base_duration=2,
-            min_equipment_needed={"Grue mobile": 1, "Pump": 1}, min_crews_needed=2,
-            predecessors=["4.6"] ),
+            id="FDP-15", name="Mise en Place Inclusions Rigides", discipline="FondationsProfondes",
+            sub_discipline="Inclusions", resource_type="BétonArmé", task_type="equipment", base_duration=8,
+            min_equipment_needed={"Foreuse": 2, "Vibrofonçage": 1}, min_crews_needed=3,
+            predecessors=["FDP-02"], repeat_on_floor=False
+        ),
         
+        # TRAITEMENTS DE SOL
         BaseTask(
-            id="4.8", name="Préparations des armatures des escaliers", discipline="Superstructure",
-            resource_type="Férrailleur", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1, "Pump": 1}, min_crews_needed=2,
-            predecessors=["4.1"]),
-        BaseTask(
-            id="4.9", name="Coffrage+pose des armatures des escaliers", discipline="Superstructure",
-            resource_type="BétonArmée", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1, "Pump":1}, min_crews_needed=2,
-            predecessors=["4.8"]),
-        BaseTask(
-            id="4.10", name="Bétonnage des escaliers", discipline="Superstructure",
-            resource_type="BétonArmée", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1, "Pump": 1}, min_crews_needed=2,
-            predecessors=["4.9"]),
-        ],
-        
-    "SecondeOeuvre": [
-        BaseTask(
-            id="5.1", name="Maçonnerie", discipline="SecondeOeuvre",
-            resource_type="Maçonnerie", task_type="worker",
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=[]
+            id="FDP-16", name="Jet Grouting - Colonnes de Sol", discipline="FondationsProfondes",
+            sub_discipline="Inclusions", resource_type="OpérateurJetGrouting", task_type="equipment", base_duration=12,
+            min_equipment_needed={"Unité Jet Grouting": 2}, min_crews_needed=4,
+            predecessors=["FDP-01"], repeat_on_floor=False
         ),
         BaseTask(
-            id="5.2", name="Cloisennement", discipline="SecondeOeuvre",
-            resource_type="plaquiste", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=[]
-        ),
-        BaseTask(
-            id="5.3", name="Etanchiété", discipline="SecondeOeuvre",
-            resource_type="Etanchiété", task_type="worker",
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=["5.1","5.2"]
-        ),
-        BaseTask(
-            id="5.4", name="Carrelage", discipline="SecondeOeuvre",
-            resource_type="Revetement", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=["5.3"]
-        ),
-        BaseTask(
-            id="5.5", name="Marbre", discipline="SecondeOeuvre",
-            resource_type="Revetement", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=["5.3"]
-        ),
-        BaseTask(
-            id="5.6", name="Peinture", discipline="SecondeOeuvre",
-            resource_type="Peinture", task_type="worker",
-            min_crews_needed=2, predecessors=["5.3"]
-        ),
-        BaseTask(
-            id="5.7", name="Enduit", discipline="SecondeOeuvre",
-            resource_type="Enduit", task_type="worker",
-            min_crews_needed=2, predecessors=["5.6"]
-        ),
-        BaseTask(
-            id="5.8", name="Faux-plafond", discipline="SecondeOeuvre",
-            resource_type="plaquiste", task_type="hybrid",
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=[]
+            id="FDP-17", name="Contrôle Intégrité Pieux par Sismique", discipline="FondationsProfondes",
+            sub_discipline="Pieux", resource_type="Foreur", task_type="supervision", base_duration=3,
+            min_crews_needed=2, predecessors=["FDP-08"], repeat_on_floor=False
         ),
     ],
+    
+    "GrosŒuvre": [
+        # FONDATIONS SUPERFICIELLES (moved from old Fondations)
+        BaseTask(
+            id="GO-F-01", name="Validation Plans Coffrage/Ferraillage Fondations", discipline="GrosŒuvre",
+            sub_discipline="FondationsSuperficielles", resource_type="BétonArmé", task_type="supervision", base_duration=1,
+            predecessors=["FDP-08", "FDP-12"], repeat_on_floor=False
+        ),
+        BaseTask(
+            id="GO-F-02", name="Préparation Plateforme Radier", discipline="GrosŒuvre",
+            sub_discipline="FondationsSuperficielles", resource_type="BétonArmé", task_type="hybrid", base_duration=3,
+            min_equipment_needed={"Compacteur": 1, "Niveleuse": 1}, min_crews_needed=2,
+            predecessors=["GO-F-01"], repeat_on_floor=False
+        ),
+        BaseTask(
+            id="GO-F-03", name="Coffrage Radier", discipline="GrosŒuvre",
+            sub_discipline="FondationsSuperficielles", resource_type="BétonArmé", task_type="hybrid", base_duration=5,
+            min_equipment_needed={"Grue à Tour": 1}, min_crews_needed=3,
+            predecessors=["GO-F-02"], repeat_on_floor=False
+        ),
+        BaseTask(
+            id="GO-F-04", name="Ferraillage Radier", discipline="GrosŒuvre",
+            sub_discipline="FondationsSuperficielles", resource_type="Ferrailleur", task_type="worker", base_duration=7,
+            min_equipment_needed={"Grue à Tour": 1}, min_crews_needed=4,
+            predecessors=["GO-F-03"], repeat_on_floor=False
+        ),
+        BaseTask(
+            id="GO-F-05", name="Bétonnage Radier", discipline="GrosŒuvre",
+            sub_discipline="FondationsSuperficielles", resource_type="BétonArmé", task_type="hybrid", base_duration=4,
+            min_equipment_needed={"Pompe à Béton": 2, "Bétonnière": 3}, min_crews_needed=5,
+            predecessors=["GO-F-04"], repeat_on_floor=False
+        ),
+        
+        # SUPERSTRUCTURE
+        BaseTask(
+            id="GO-S-01", name="Validation Plans Structure EXE", discipline="GrosŒuvre",
+            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="supervision", base_duration=1,
+            min_equipment_needed={"Grue à Tour": 1}, min_crews_needed=2, predecessors=["GO-F-05"]
+        ),
+        BaseTask(
+            id="GO-S-02", name="Préparation Armatures Poteaux/Voiles", discipline="GrosŒuvre",
+            sub_discipline="StructureBéton", resource_type="Ferrailleur", task_type="worker", base_duration=3,
+            min_equipment_needed={"Grues Mobiles": 1}, min_crews_needed=3,
+            predecessors=["GO-S-01"], repeat_on_floor=True
+        ),
+        BaseTask(
+            id="GO-S-03", name="Coffrage et Pose Armatures Poteaux/Voiles", discipline="GrosŒuvre",
+            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="hybrid", base_duration=4,
+            min_equipment_needed={"Grue à Tour": 1}, min_crews_needed=3,
+            predecessors=["GO-S-02"], repeat_on_floor=True
+        ),
+        BaseTask(
+            id="GO-S-04", name="Bétonnage Poteaux/Voiles", discipline="GrosŒuvre",
+            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="hybrid", base_duration=2,
+            min_equipment_needed={"Pompe à Béton": 1, "Bétonnière": 2}, min_crews_needed=3,
+            predecessors=["GO-S-03"], repeat_on_floor=True
+        ),
+        BaseTask(
+            id="GO-S-05", name="Préparation Armatures Planchers", discipline="GrosŒuvre",
+            sub_discipline="StructureBéton", resource_type="Ferrailleur", task_type="worker", base_duration=4,
+            min_equipment_needed={"Grue à Tour": 1}, min_crews_needed=3,
+            predecessors=["GO-S-04"], repeat_on_floor=True
+        ),
+        BaseTask(
+            id="GO-S-06", name="Coffrage et Pose Armatures Planchers", discipline="GrosŒuvre",
+            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="hybrid", base_duration=5,
+            min_equipment_needed={"Grue à Tour": 1, "Échafaudages": 1}, min_crews_needed=3,
+            predecessors=["GO-S-05"], repeat_on_floor=True
+        ),
+        BaseTask(
+            id="GO-S-07", name="Bétonnage Planchers", discipline="GrosŒuvre",
+            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="hybrid", base_duration=3,
+            min_equipment_needed={"Pompe à Béton": 1, "Bétonnière": 2}, min_crews_needed=3,
+            predecessors=["GO-S-06"], repeat_on_floor=True
+        ),
+    ],
+    
+    "SecondŒuvre": [
+        BaseTask(
+            id="SO-01", name="Maçonnerie - Cloisons", discipline="SecondŒuvre",
+            sub_discipline="Cloisons", resource_type="Maçon", task_type="worker", base_duration=4,
+            min_equipment_needed={"Monte-charge": 1}, min_crews_needed=3,
+            predecessors=["GO-S-07"], repeat_on_floor=True
+        ),
+        BaseTask(
+            id="SO-02", name="Étanchéité Terrasses et Balcons", discipline="SecondŒuvre",
+            sub_discipline="Revêtements", resource_type="Étanchéiste", task_type="worker", base_duration=3,
+            min_crews_needed=2, predecessors=["SO-01"], repeat_on_floor=True
+        ),
+    ]
 }
-acceleration = {
-    "Terrassement": {"factor": 3.0},  # up to 5 crews
-    "Fondations": {"factor": 2},    # up to 3 crews
-    "Superstructure": {"factor": 1.0},    # allow at most 2
-    "default": {"factor": 1.0},
+
+ACCELERATION_FACTORS = {
+    "Terrassement": {"factor": 3.0, "max_crews": 5, "constraints": ["space_availability", "equipment_limits"]},
+    "FondationsProfondes": {"factor": 2.0, "max_crews": 4, "constraints": ["curing_time", "sequential_work", "specialized_equipment"]},
+    "GrosŒuvre": {"factor": 1.5, "max_crews": 3, "constraints": ["curing_time", "structural_sequence"]},
+    "SecondŒuvre": {"factor": 1.2, "max_crews": 4, "constraints": ["space_limitation", "trade_coordination"]},
+    "default": {"factor": 1.0, "max_crews": 2, "constraints": ["quality_requirements"]}
+}
+
+CROSS_FLOOR_DEPENDENCIES = {
+    # Deep foundations to superstructure
+    "GO-F-01": ["FDP-08", "FDP-12", "FDP-17"],
+    
+    # Structural dependencies
+    "GO-S-04": ["GO-S-07"],  # Columns (F+1) depend on Slab (F)
+    "GO-S-05": ["GO-S-07"],  # Plancher prep depends on previous slab
+    "GO-S-07": ["GO-S-04"],  # Slab depends on columns from same level
+    
+    # Quality gates for deep foundations
+    "FDP-05": ["FDP-04"],  # Geotechnical control after cleaning
+    "FDP-08": ["FDP-07"],  # Core testing after concreting
+    "FDP-17": ["FDP-08"],  # Integrity testing after core tests
+}
+
+QUALITY_GATES = {
+    "PRE-01": "Site Establishment Approval",
+    "TER-01": "Earthworks Approval", 
+    "FDP-05": "Geotechnical Control - Bottom of Excavation",
+    "FDP-08": "Deep Foundations Quality Control",
+    "FDP-17": "Integrity Testing Approval",
+    "GO-F-01": "Shallow Foundations Approval",
+    "GO-S-01": "Structural Works Approval",
+    "SO-01": "Enclosed Building Status",
 }
 
 cross_floor_links = {
