@@ -282,3 +282,52 @@ def check_and_migrate_database():
     except Exception as e:
         logger.error(f"❌ Database migration failed: {e}")
         return False
+
+def delete_task(task_id: int, user_id: int) -> bool:
+    """
+    Delete a task by ID, ensuring it belongs to the user
+    Returns True if successful, False otherwise
+    """
+    try:
+        with SessionLocal() as session:
+            task = session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.id == task_id,
+                UserBaseTaskDB.user_id == user_id
+            ).first()
+            
+            if task:
+                session.delete(task)
+                session.commit()
+                logger.info(f"✅ Task deleted: {task.name} (ID: {task_id})")
+                return True
+            else:
+                logger.warning(f"⚠️ Task not found or access denied: ID {task_id} for user {user_id}")
+                return False
+                
+    except Exception as e:
+        logger.error(f"❌ Failed to delete task {task_id}: {e}")
+        session.rollback()
+        return False
+
+def get_task_by_id(task_id: int, user_id: int):
+    """Get a specific task by ID for a user"""
+    try:
+        with SessionLocal() as session:
+            return session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.id == task_id,
+                UserBaseTaskDB.user_id == user_id
+            ).first()
+    except Exception as e:
+        logger.error(f"Error getting task {task_id}: {e}")
+        return None
+
+def get_user_tasks(user_id: int):
+    """Get all tasks for a specific user"""
+    try:
+        with SessionLocal() as session:
+            return session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.user_id == user_id
+            ).order_by(UserBaseTaskDB.discipline, UserBaseTaskDB.name).all()
+    except Exception as e:
+        logger.error(f"Error getting tasks for user {user_id}: {e}")
+        return []
