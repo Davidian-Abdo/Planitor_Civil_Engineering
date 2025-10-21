@@ -4,7 +4,9 @@ from backend.database import SessionLocal
 from backend.db_models import UserBaseTaskDB
 from defaults import disciplines
 from models import DisciplineZoneConfig
-
+from backend.database_operations import (
+    save_enhanced_task, duplicate_task, delete_task, get_user_tasks_with_filters
+)
 # ==================== CONSTRAINTS & CONFIGURATION ====================
 class SimpleConstraintManager:
     def __init__(self):
