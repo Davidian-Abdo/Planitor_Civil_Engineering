@@ -26,7 +26,7 @@ from ui_pages import scheduling_page, monitoring_page, login_ui
 
 # Scheduling imports
 try:
-    from scheduling_engine import run_schedule, analyze_project_progress
+    from scheduling_engin import run_schedule, analyze_project_progress
 except ImportError:
     from scheduling_engin import run_schedule, analyze_project_progress  # Fallback for typo
 
