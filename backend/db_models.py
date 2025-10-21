@@ -53,17 +53,16 @@ class UserDB(Base):
     def __repr__(self):
         return f"<User {self.username} ({self.role})>"
 
-# FIXED: This is now your MAIN task model (replaces BaseTaskDB)
 class UserBaseTaskDB(Base):
-    __tablename__ = "user_base_tasks"  # ✅ CORRECT: Separate table for user tasks
+    __tablename__ = "user_base_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # ✅ Link to user
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(100), nullable=False, index=True)
     discipline = Column(String(50), nullable=False)
-    resource_type = Column(String(20), nullable=False)
+    resource_type = Column(String(50), nullable=False)  # ✅ Increased length for flexibility
     task_type = Column(String(20), default="worker")
-    base_duration = Column(Float, default=1.0, nullable=False)
+    base_duration = Column(Float, nullable=True)  # ✅ Changed to nullable for calculated durations
     min_crews_needed = Column(Integer, default=1)
     min_equipment_needed = Column(JSON, default=lambda: {})
     predecessors = Column(JSON, default=lambda: [])
@@ -80,32 +79,24 @@ class UserBaseTaskDB(Base):
     max_crews = Column(Integer, default=50)
 
     # User tracking
-    created_by_user = Column(Boolean, default=True)  # ✅ Always True for user tasks
+    created_by_user = Column(Boolean, default=True)
     creator_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # ✅ FIXED: Removed duplicate index definition
+    # ✅ FIXED: Remove resource_type constraint, keep only essential constraints
     __table_args__ = (
-        CheckConstraint(f"resource_type IN ({', '.join(repr(r) for r in VALID_RESOURCE_TYPES)})", name="valid_resource_type"),
         CheckConstraint(f"task_type IN ({', '.join(repr(r) for r in VALID_TASK_TYPES)})", name="valid_task_type"),
         CheckConstraint(f"discipline IN ({', '.join(repr(d) for d in VALID_DISCIPLINES)})", name="valid_discipline"),
-        CheckConstraint("base_duration >= 0", name="positive_duration"),
+        CheckConstraint("base_duration >= 0 OR base_duration IS NULL", name="positive_or_null_duration"),  # ✅ Allow NULL
         CheckConstraint("min_crews_needed >= 0", name="non_negative_crews"),
         CheckConstraint("delay >= 0", name="non_negative_delay"),
         Index('idx_task_discipline_included', 'discipline', 'included'),
         Index('idx_task_creator', 'creator_id', 'created_at'),
-        Index('idx_task_resource_type', 'resource_type', 'included'),  # ✅ Only one instance
-        Index('idx_user_tasks_user', 'user_id', 'included'),  # ✅ Added user index
-        UniqueConstraint('user_id', 'name', 'discipline', name='unique_user_task_per_discipline'),  # ✅ User-specific uniqueness
+        Index('idx_task_resource_type', 'resource_type', 'included'),
+        Index('idx_user_tasks_user', 'user_id', 'included'),
+        UniqueConstraint('user_id', 'name', 'discipline', name='unique_user_task_per_discipline'),
     )
-
-    # FIXED: Relationships
-    creator = relationship("UserDB", back_populates="tasks_created", foreign_keys=[creator_id])
-    user = relationship("UserDB", foreign_keys=[user_id])  # ✅ Link to user owner
-
-    def __repr__(self):
-        return f"<UserTask {self.name} ({self.discipline})>"
 
 class DisciplineZoneConfigDB(Base):
     __tablename__ = "discipline_zone_config"
