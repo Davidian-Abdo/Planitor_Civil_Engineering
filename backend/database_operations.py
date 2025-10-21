@@ -331,3 +331,130 @@ def get_user_tasks(user_id: int):
     except Exception as e:
         logger.error(f"Error getting tasks for user {user_id}: {e}")
         return []
+
+def get_user_task_count(user_id: int) -> int:
+    """Get total number of tasks for a user"""
+    try:
+        with SessionLocal() as session:
+            return session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.user_id == user_id,
+                UserBaseTaskDB.included == True
+            ).count()
+    except Exception as e:
+        logger.error(f"Error getting task count for user {user_id}: {e}")
+        return 0
+
+def get_task_statistics(user_id: int) -> dict:
+    """Get statistics about user's tasks"""
+    try:
+        with SessionLocal() as session:
+            total_tasks = session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.user_id == user_id,
+                UserBaseTaskDB.included == True
+            ).count()
+            
+            tasks_with_duration = session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.user_id == user_id,
+                UserBaseTaskDB.included == True,
+                UserBaseTaskDB.base_duration.isnot(None)
+            ).count()
+            
+            tasks_by_discipline = session.query(
+                UserBaseTaskDB.discipline,
+                UserBaseTaskDB.sub_discipline,
+                sa.func.count(UserBaseTaskDB.id)
+            ).filter(
+                UserBaseTaskDB.user_id == user_id,
+                UserBaseTaskDB.included == True
+            ).group_by(
+                UserBaseTaskDB.discipline,
+                UserBaseTaskDB.sub_discipline
+            ).all()
+            
+            return {
+                'total_tasks': total_tasks,
+                'tasks_with_fixed_duration': tasks_with_duration,
+                'tasks_by_discipline': {f"{d}/{sd or 'None'}": count for d, sd, count in tasks_by_discipline},
+                'tasks_need_duration_calculation': total_tasks - tasks_with_duration
+            }
+    except Exception as e:
+        logger.error(f"Error getting task statistics for user {user_id}: {e}")
+        return {}
+
+# ===== TASK MANAGEMENT FUNCTIONS =====
+def get_task_by_id(task_id: int, user_id: int):
+    """Get a specific task by ID for a user"""
+    try:
+        with SessionLocal() as session:
+            return session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.id == task_id,
+                UserBaseTaskDB.user_id == user_id
+            ).first()
+    except Exception as e:
+        logger.error(f"Error getting task {task_id}: {e}")
+        return None
+
+def get_user_tasks(user_id: int):
+    """Get all tasks for a specific user"""
+    try:
+        with SessionLocal() as session:
+            return session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.user_id == user_id
+            ).order_by(UserBaseTaskDB.discipline, UserBaseTaskDB.name).all()
+    except Exception as e:
+        logger.error(f"Error getting tasks for user {user_id}: {e}")
+        return []
+
+def delete_task(task_id: int, user_id: int) -> bool:
+    """Delete a task by ID, ensuring it belongs to the user"""
+    try:
+        with SessionLocal() as session:
+            task = session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.id == task_id,
+                UserBaseTaskDB.user_id == user_id
+            ).first()
+            
+            if task:
+                session.delete(task)
+                session.commit()
+                logger.info(f"Task deleted: {task.name} (ID: {task_id})")
+                return True
+            else:
+                logger.warning(f"Task not found or access denied: ID {task_id} for user {user_id}")
+                return False
+                
+    except Exception as e:
+        logger.error(f"Failed to delete task {task_id}: {e}")
+        session.rollback()
+        return False
+
+def toggle_task_inclusion(task_id: int, user_id: int) -> bool:
+    """Toggle a task's included status"""
+    try:
+        with SessionLocal() as session:
+            task = session.query(UserBaseTaskDB).filter(
+                UserBaseTaskDB.id == task_id,
+                UserBaseTaskDB.user_id == user_id
+            ).first()
+            
+            if task:
+                task.included = not task.included
+                session.commit()
+                status = "included" if task.included else "excluded"
+                logger.info(f"Task {status}: {task.name} (ID: {task_id})")
+                return True
+            return False
+    except Exception as e:
+        logger.error(f"Error toggling task inclusion {task_id}: {e}")
+        session.rollback()
+        return False
+
+# ===== USER MANAGEMENT FUNCTIONS =====
+def get_user_by_username(username: str):
+    """Get user by username"""
+    try:
+        with SessionLocal() as session:
+            return session.query(UserDB).filter(UserDB.username == username).first()
+    except Exception as e:
+        logger.error(f"Error getting user {username}: {e}")
+        return None
