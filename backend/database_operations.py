@@ -58,11 +58,21 @@ def save_enhanced_task(session, task, is_new, user_id, name, discipline, resourc
         logger.error(f"❌ Failed to save task: {e}")
         session.rollback()
         return False
-
 def create_default_tasks_from_defaults_py(user_id=None):
     """Create default tasks from defaults.py - PRESERVES None durations"""
     try:
         with SessionLocal() as session:
+            # ✅ CRITICAL FIX: Ensure we have a valid user_id
+            if user_id is None:
+                # Get the admin user to assign system tasks to
+                admin_user = session.query(UserDB).filter_by(username="admin").first()
+                if admin_user:
+                    user_id = admin_user.id
+                    st.write(f"✅ Using admin user (ID: {user_id}) for system tasks")
+                else:
+                    st.error("❌ No admin user found and no user_id provided")
+                    return 0
+            
             # Import defaults.py
             try:
                 from defaults import BASE_TASKS
@@ -130,14 +140,14 @@ def create_default_tasks_from_defaults_py(user_id=None):
                         
                         # Convert BaseTask to UserBaseTaskDB
                         db_task = UserBaseTaskDB(
-                            user_id=user_id,
+                            user_id=user_id,  # ✅ Now guaranteed to have a value
                             name=getattr(base_task, 'name', 'Unknown Task'),
                             discipline=discipline,
                             resource_type=resource_type,
                             task_type=task_type,
-                            base_duration=base_duration,  # ✅ Can be None (database now supports it)
+                            base_duration=base_duration,  # ✅ Can be None
                             min_crews_needed=min_crews_needed,
-                            min_equipment_needed=min_equipment_needed,  # ✅ With fixed tuple keys
+                            min_equipment_needed=min_equipment_needed,
                             predecessors=predecessors,
                             repeat_on_floor=repeat_on_floor,
                             included=included,
