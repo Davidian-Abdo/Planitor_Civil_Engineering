@@ -12,7 +12,12 @@ from typing import Optional, Dict, Any
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Backend imports
-from backend import init_backend, SessionLocal, logger, check_backend_health
+try:
+    from backend import init_backend, SessionLocal, logger, check_backend_health
+    BACKEND_AVAILABLE = True
+except ImportError as e:
+    logger.error(f"Backend imports failed: {e}")
+    BACKEND_AVAILABLE = False
 from backend.auth import AuthManager, require_role
 from backend.db_models import UserDB
 
@@ -24,6 +29,17 @@ try:
     from scheduling_engine import run_schedule, analyze_project_progress
 except ImportError:
     from scheduling_engin import run_schedule, analyze_project_progress  # Fallback for typo
+
+
+    
+    # Create minimal fallbacks
+    def init_backend():
+        return False
+    
+    def check_backend_health():
+        return {"status": "unavailable", "error": "Backend not loaded"}
+    
+    SessionLocal = None
 
 # ------------------------- CONFIGURATION -------------------------
 APP_TITLE = "🏗️ Construction Project Manager Pro"
@@ -524,6 +540,15 @@ def main():
     """Application entry point"""
     app = Application()
     ErrorHandler.handle_global_errors(app)
+    if BACKEND_AVAILABLE:
+        if not initialize_application():
+            st.error("Backend initialization failed")
+            st.stop()
+    else:
+        st.error("Backend system not available - check server logs")
+        st.stop(
+    
+    
 
 
 if __name__ == "__main__":
