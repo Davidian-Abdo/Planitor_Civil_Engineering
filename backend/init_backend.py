@@ -155,7 +155,7 @@ def _create_default_tasks_from_defaults():
                 logger.error("Admin user not found for task assignment")
                 return
             
-            # Create default tasks assigned to admin
+            # ✅ FIX: Pass the admin user ID explicitly
             created_count = create_default_tasks_from_defaults_py(admin_user.id)
             
             if created_count > 0:
