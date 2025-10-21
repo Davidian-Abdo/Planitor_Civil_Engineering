@@ -390,7 +390,7 @@ def main():
     # Initialize application backend
     if not initialize_application():
         st.stop()
-      if not st.session_state.get("logged_in", False):
+    if not st.session_state.get("logged_in", False):
         st.info("Please login to access project modules.")
         return
 
