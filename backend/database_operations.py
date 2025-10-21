@@ -258,9 +258,9 @@ def check_and_migrate_database():
                 test_task = UserBaseTaskDB(
                     user_id=1,
                     name="Migration Test Task",
-                    discipline="Préliminaire",
+                    discipline="Préliminaires",
                     sub_discipline="TestSubDiscipline",  # ✅ TEST with sub_discipline
-                    resource_type="TestResourceType",
+                    resource_type="BétonArmée",
                     base_duration=None,
                     min_crews_needed=1,
                     created_by_user=False
