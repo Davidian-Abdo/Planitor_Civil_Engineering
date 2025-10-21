@@ -121,8 +121,6 @@ class UserBaseTaskDB(Base):
     # ✅ UPDATED: Add sub_discipline to constraints and indexes
     __table_args__ = (
         CheckConstraint(f"task_type IN ({', '.join(repr(r) for r in VALID_TASK_TYPES)})", name="valid_task_type"),
-        CheckConstraint(f"discipline IN ({', '.join(repr(d) for d in VALID_DISCIPLINES_FLAT)})", name="valid_discipline"),
-        CheckConstraint("base_duration >= 0 OR base_duration IS NULL", name="positive_or_null_duration"),
         CheckConstraint("min_crews_needed >= 0", name="non_negative_crews"),
         CheckConstraint("delay >= 0", name="non_negative_delay"),
         Index('idx_task_discipline_included', 'discipline', 'included'),
