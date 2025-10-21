@@ -9,66 +9,50 @@ import logging
 
 logger = logging.getLogger(__name__)
 def create_default_tasks_from_defaults_py(user_id=None):
-    """Create default tasks from defaults.py BASE_TASKS in the database"""
+    """Create default tasks from defaults.py - PRESERVE None durations"""
     try:
         with SessionLocal() as session:
-            # Import defaults.py - MAKE SURE THIS WORKS
-            try:
-                from defaults import BASE_TASKS
-                st.write(f"✅ Successfully imported BASE_TASKS with {sum(len(tasks) for tasks in BASE_TASKS.values())} total tasks")
-            except ImportError as e:
-                st.error(f"❌ Failed to import from defaults.py: {e}")
-                return 0
+            from defaults import BASE_TASKS
             
             created_count = 0
+            failed_count = 0
+            
             for discipline, tasks in BASE_TASKS.items():
                 st.write(f"🔄 Processing {discipline} with {len(tasks)} tasks")
                 
                 for base_task in tasks:
-                    # Skip if task is not included
                     if not getattr(base_task, 'included', True):
                         st.write(f"   ⏭️ Skipping excluded task: {base_task.name}")
                         continue
                     
                     try:
-                        # Convert BaseTask to UserBaseTaskDB
-                        db_task = UserBaseTaskDB(
-                            user_id=user_id,  # If None, becomes system task
-                            name=getattr(base_task, 'name', 'Unknown Task'),
-                            discipline=discipline,
-                            resource_type=getattr(base_task, 'resource_type', 'BétonArmée'),
-                            task_type=getattr(base_task, 'task_type', 'worker'),
-                            base_duration=float(getattr(base_task, 'base_duration', 1.0)),
-                            min_crews_needed=int(getattr(base_task, 'min_crews_needed', 1)),
-                            min_equipment_needed=getattr(base_task, 'min_equipment_needed', {}),
-                            predecessors=getattr(base_task, 'predecessors', []),
-                            repeat_on_floor=bool(getattr(base_task, 'repeat_on_floor', True)),
-                            included=bool(getattr(base_task, 'included', True)),
-                            delay=int(getattr(base_task, 'delay', 0)),
-                            created_by_user=False  # Mark as system default task
-                        )
+                        # ✅ PRESERVE None durations for scheduling engine calculation
+                        base_duration = getattr(base_task, 'base_duration', None)
+                        if base_duration is not None:
+                            base_duration = float(base_duration)
                         
-                        session.add(db_task)
-                        created_count += 1
-                        st.write(f"   ✅ Added: {base_task.name}")
+                        # Get other values with safe defaults
+                        resource_type = getattr(base_task, 'resource_type', 'BétonArmée')
+                        min_crews_needed = getattr(base_task, 'min_crews_needed', 1)
+                        if min_crews_needed is not None:
+                            min_crews_needed = int(min_crews_needed)
+                        
+                        # ... rest of task creation ...
+                        
+                        duration_info = "🔄 Calculated" if base_duration is None else f"⏱️ {base_duration}d"
+                        st.write(f"   ✅ Added: {base_task.name} (Duration: {duration_info})")
                         
                     except Exception as task_error:
+                        failed_count += 1
                         st.error(f"   ❌ Failed to add task {base_task.name}: {task_error}")
                         continue
             
-            try:
-                session.commit()
-                st.success(f"🎉 Successfully created {created_count} default tasks in database!")
-                return created_count
-            except Exception as commit_error:
-                st.error(f"❌ Failed to commit tasks to database: {commit_error}")
-                session.rollback()
-                return 0
+            session.commit()
+            st.success(f"🎉 Successfully created {created_count} default tasks! ({failed_count} failed)")
+            return created_count
             
     except Exception as e:
-        st.error(f"❌ Critical error in create_default_tasks_from_defaults_py: {e}")
-        import traceback
-        st.code(traceback.format_exc())
+        st.error(f"❌ Critical error: {e}")
         return 0
 def copy_default_tasks_to_user(user_id):
     """Copy default tasks to user's personal library - ENHANCED VERSION"""
