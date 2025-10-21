@@ -399,12 +399,16 @@ def main():
     
     # Render authentication sidebar
     login_ui()
-    if user_role == "admin" and st.sidebar.button("🚀 Run Migration (Admin Only)"):
-        migration_page()
-        return
+ 
     # Main application logic
     if st.session_state.app_ready:
         if auth_manager.is_authenticated():
+
+            user_role = st.session_state["user"]["role"]
+            # ✅ MOVE THIS INSIDE AUTHENTICATED BLOCK:
+            if user_role == "admin" and st.sidebar.button("🚀 Run Migration (Admin Only)"):
+                migration_page()
+                retur
             # User is logged in - show navigation and pages
             selected_page = render_navigation()
             st.session_state.current_page = selected_page
