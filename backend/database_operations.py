@@ -192,7 +192,14 @@ def copy_default_tasks_to_user(user_id):
             
             if system_default_count == 0:
                 st.info("🔄 Creating system default tasks first...")
-                created_count = create_default_tasks_from_defaults_py()  # Create system defaults
+                # ✅ FIX: Get admin user ID for system tasks
+                admin_user = session.query(UserDB).filter_by(username="admin").first()
+                if admin_user:
+                    created_count = create_default_tasks_from_defaults_py(admin_user.id)
+                else:
+                    st.error("❌ Admin user not found for creating system tasks")
+                    return 0
+                    
                 if created_count == 0:
                     st.error("❌ Could not create system default tasks")
                     return 0
@@ -212,7 +219,7 @@ def copy_default_tasks_to_user(user_id):
                 if not existing:
                     # Create user-specific copy
                     user_task = UserBaseTaskDB(
-                        user_id=user_id,
+                        user_id=user_id,  # ✅ This should be the current user's ID
                         name=default_task.name,
                         discipline=default_task.discipline,
                         resource_type=default_task.resource_type,
@@ -238,8 +245,6 @@ def copy_default_tasks_to_user(user_id):
     except Exception as e:
         logger.error(f"❌ Failed to copy default tasks: {e}")
         return 0
-
-
 
 def duplicate_task(original_task, user_id, modifications=None):
     """Duplicate a task with optional modifications"""
