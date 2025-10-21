@@ -560,61 +560,38 @@ def enhanced_task_management():
     show_task_management_interface(current_user_id, user_role)
 
 def show_empty_state(user_id, username, user_role):
-    """Show empty state with import options"""
+    """Show empty state with import options - ENHANCED VERSION"""
     st.warning("🎯 No personal tasks found in your library.")
     
-    st.markdown("""
-    ### Get Started with Your Task Library:
+    # FIRST: Show the one-time creation option
+    create_default_tasks_now()
     
-    Choose how you'd like to start building your construction task library:
-    """)
+    st.markdown("---")
+    st.markdown("### Or choose another option:")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### 📥 Option 1: Import Defaults")
+        st.markdown("#### 🆕 Create Fresh")
         st.markdown("""
-        - **Best for new users**
-        - Get 50+ pre-configured construction tasks
-        - Based on industry standards
-        - Fully customizable afterward
-        """)
-        if st.button("🚀 Import Default Tasks", use_container_width=True, key="import_defaults"):
-            with st.spinner("Importing default construction tasks..."):
-                created_count = copy_default_tasks_to_user(user_id)
-                if created_count > 0:
-                    st.success(f"✅ Imported {created_count} default tasks to your library!")
-                    st.balloons()
-                    st.rerun()
-                else:
-                    st.error("❌ No default tasks available to import")
-    
-    with col2:
-        st.markdown("#### 🆕 Option 2: Start Fresh")
-        st.markdown("""
-        - **Best for experts**
-        - Create tasks from scratch
-        - Complete control over everything
-        - Build your proprietary library
+        - Start from scratch
+        - Complete control
+        - Build custom library
         """)
         if st.button("✨ Create First Task", use_container_width=True, key="create_first"):
             st.session_state["creating_new_task"] = True
             st.session_state["editing_task_id"] = None
             st.rerun()
     
-    with col3:
-        st.markdown("#### 📋 Option 3: Use Templates")
+    with col2:
+        st.markdown("#### 📋 Use Templates")
         st.markdown("""
-        - **Best for specific projects**
-        - Import from Excel templates
-        - Bulk task creation
+        - Import from Excel
+        - Bulk creation
         - Standardized formats
         """)
         if st.button("📊 Import from Template", use_container_width=True, key="import_template"):
             show_import_template_modal(user_id)
-    
-    st.markdown("---")
-    st.info("💡 **Recommendation**: Most users start with **Import Defaults** to get a complete foundation, then customize as needed.")
 
 def show_task_management_interface(user_id, user_role):
     """Show full task management interface"""
@@ -906,3 +883,39 @@ def debug_task_system():
         example_tasks = session.query(UserBaseTaskDB).limit(5).all()
         for task in example_tasks:
             st.write(f" - {task.name} (User: {task.user_id}, System: {not task.created_by_user})")
+
+def create_default_tasks_now():
+    """One-time function to create default tasks in database"""
+    st.subheader("🚀 Create Default Tasks Now")
+    
+    current_user_id = st.session_state["user"]["id"]
+    
+    if st.button("🎯 Create Default Construction Tasks in Database", type="primary"):
+        try:
+            with st.spinner("Creating default construction tasks from defaults.py..."):
+                # Import the function
+                from backend.database_operations import create_default_tasks_from_defaults_py
+                
+                # Create system default tasks (with user_id=None)
+                created_count = create_default_tasks_from_defaults_py()
+                
+                if created_count > 0:
+                    st.success(f"✅ Created {created_count} system default tasks!")
+                    
+                    # Now copy them to current user
+                    from backend.database_operations import copy_default_tasks_to_user
+                    user_count = copy_default_tasks_to_user(current_user_id)
+                    
+                    if user_count > 0:
+                        st.success(f"✅ Copied {user_count} tasks to your personal library!")
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        st.info("Tasks created but couldn't copy to user (might already exist)")
+                else:
+                    st.error("❌ Could not create default tasks")
+                    
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
+            import traceback
+            st.code(traceback.format_exc())
