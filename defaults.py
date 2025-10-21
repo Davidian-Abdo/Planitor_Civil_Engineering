@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+rfrom dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 
@@ -26,6 +26,12 @@ VALID_DISCIPLINES = {
     'Lots techniques': ['CFO','CFA' , 'Ventillation', 'climatisation','Plomberie'],
     'AménagementsExtérieurs': ['VRD', 'EspacesVerts']
 }
+VALID_RESOURCE_TYPES = [
+    'BétonArmé', 'Ferrailleur', 'Plaquiste', 'Maçon', 
+    'Étanchéiste', 'Staffeur', 'Peintre', 'Topographe', 'Charpentier', 
+    'Soudeur', 'Agent de netoyage', 'Ascensoriste', 'Grutier', 'ConducteurEngins',
+     'OpérateurMalaxeur', 'OpérateurJetGrouting','Carreleur-Marbrier'
+]
 disciplines=['Préliminaires',
     'Terrassement',
     'FondationsProfondes',
@@ -33,12 +39,7 @@ disciplines=['Préliminaires',
     'SecondŒuvre' ,
     'Lots techniques',
     'AménagementsExtérieurs']
-VALID_RESOURCE_TYPES = [
-    'BétonArmé', 'Ferrailleur', 'Plaquiste', 'Maçon', 
-    'Étanchéiste', 'Staffeur', 'Peintre', 'Topographe', 'Charpentier', 
-    'Soudeur', 'Agent de netoyage', 'Ascensoriste', 'Grutier', 'ConducteurEngins',
-     'OpérateurMalaxeur', 'OpérateurJetGrouting','Carreleur-Marbrier'
-]
+
 # =======================
 # WORKER RESOURCES
 # =======================
@@ -705,8 +706,8 @@ __all__ = [
     'BASE_TASKS',
     
     # Scheduling configuration
-    'ACCELERATION_FACTORS',
-    'CROSS_FLOOR_DEPENDENCIES',
+    'acceleration',
+    'cross_floor_links',
     'QUALITY_GATES',
     'SHIFT_CONFIG',
     
