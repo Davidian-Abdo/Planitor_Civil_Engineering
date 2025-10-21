@@ -1,6 +1,7 @@
 """
 Enhanced database operations for task management
 """
+import streamlit as st  # ← ADD THIS FOR DEBUGGING
 from sqlalchemy.orm import Session
 from backend.database import SessionLocal
 from backend.db_models import UserBaseTaskDB, UserDB
@@ -11,54 +12,64 @@ def create_default_tasks_from_defaults_py(user_id=None):
     """Create default tasks from defaults.py BASE_TASKS in the database"""
     try:
         with SessionLocal() as session:
-            # Check if default tasks already exist
-            if user_id:
-                existing_count = session.query(UserBaseTaskDB).filter_by(user_id=user_id).count()
-            else:
-                existing_count = session.query(UserBaseTaskDB).filter_by(created_by_user=False).count()
-            
-            if existing_count > 0:
-                logger.info(f"✅ Default tasks already exist in database: {existing_count} tasks")
-                return existing_count
-            
-            # Import and convert BASE_TASKS from defaults.py
-            from defaults import BASE_TASKS
+            # Import defaults.py - MAKE SURE THIS WORKS
+            try:
+                from defaults import BASE_TASKS
+                st.write(f"✅ Successfully imported BASE_TASKS with {sum(len(tasks) for tasks in BASE_TASKS.values())} total tasks")
+            except ImportError as e:
+                st.error(f"❌ Failed to import from defaults.py: {e}")
+                return 0
             
             created_count = 0
             for discipline, tasks in BASE_TASKS.items():
+                st.write(f"🔄 Processing {discipline} with {len(tasks)} tasks")
+                
                 for base_task in tasks:
                     # Skip if task is not included
                     if not getattr(base_task, 'included', True):
+                        st.write(f"   ⏭️ Skipping excluded task: {base_task.name}")
                         continue
                     
-                    # Convert BaseTask to UserBaseTaskDB
-                    db_task = UserBaseTaskDB(
-                        user_id=user_id,  # If None, becomes system task
-                        name=base_task.name,
-                        discipline=discipline,
-                        resource_type=getattr(base_task, 'resource_type', 'BétonArmée'),
-                        task_type=getattr(base_task, 'task_type', 'worker'),
-                        base_duration=getattr(base_task, 'base_duration', 1.0),
-                        min_crews_needed=getattr(base_task, 'min_crews_needed', 1),
-                        min_equipment_needed=getattr(base_task, 'min_equipment_needed', {}),
-                        predecessors=getattr(base_task, 'predecessors', []),
-                        repeat_on_floor=getattr(base_task, 'repeat_on_floor', True),
-                        included=getattr(base_task, 'included', True),
-                        delay=getattr(base_task, 'delay', 0),
-                        created_by_user=False  # Mark as system default task
-                    )
-                    
-                    session.add(db_task)
-                    created_count += 1
+                    try:
+                        # Convert BaseTask to UserBaseTaskDB
+                        db_task = UserBaseTaskDB(
+                            user_id=user_id,  # If None, becomes system task
+                            name=getattr(base_task, 'name', 'Unknown Task'),
+                            discipline=discipline,
+                            resource_type=getattr(base_task, 'resource_type', 'BétonArmée'),
+                            task_type=getattr(base_task, 'task_type', 'worker'),
+                            base_duration=float(getattr(base_task, 'base_duration', 1.0)),
+                            min_crews_needed=int(getattr(base_task, 'min_crews_needed', 1)),
+                            min_equipment_needed=getattr(base_task, 'min_equipment_needed', {}),
+                            predecessors=getattr(base_task, 'predecessors', []),
+                            repeat_on_floor=bool(getattr(base_task, 'repeat_on_floor', True)),
+                            included=bool(getattr(base_task, 'included', True)),
+                            delay=int(getattr(base_task, 'delay', 0)),
+                            created_by_user=False  # Mark as system default task
+                        )
+                        
+                        session.add(db_task)
+                        created_count += 1
+                        st.write(f"   ✅ Added: {base_task.name}")
+                        
+                    except Exception as task_error:
+                        st.error(f"   ❌ Failed to add task {base_task.name}: {task_error}")
+                        continue
             
-            session.commit()
-            logger.info(f"✅ Created {created_count} default tasks from defaults.py")
-            return created_count
+            try:
+                session.commit()
+                st.success(f"🎉 Successfully created {created_count} default tasks in database!")
+                return created_count
+            except Exception as commit_error:
+                st.error(f"❌ Failed to commit tasks to database: {commit_error}")
+                session.rollback()
+                return 0
             
     except Exception as e:
-        logger.error(f"❌ Failed to create default tasks from defaults.py: {e}")
+        st.error(f"❌ Critical error in create_default_tasks_from_defaults_py: {e}")
+        import traceback
+        st.code(traceback.format_exc())
         return 0
-
 def copy_default_tasks_to_user(user_id):
     """Copy default tasks to user's personal library - ENHANCED VERSION"""
     try:
