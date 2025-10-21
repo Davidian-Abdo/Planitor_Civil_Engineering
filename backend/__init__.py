@@ -109,7 +109,7 @@ except ImportError as e:
 # Import database operations with error handling
 try:
     from backend.database_operations import (
-        copy_default_tasks_to_user, save_enhanced_task, duplicate_task, 
+         save_enhanced_task, duplicate_task, 
         delete_task, get_user_tasks_with_filters, get_user_task_count,
         create_default_tasks_from_defaults_py, migrate_sub_discipline_column
     )
