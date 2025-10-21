@@ -216,52 +216,7 @@ def copy_default_tasks_to_user(user_id):
         logger.error(f"❌ Failed to copy default tasks: {e}")
         return 0
 
-def save_enhanced_task(session, task, is_new, user_id, name, discipline, resource_type, 
-                      base_duration, min_crews_needed, delay, min_equipment_needed, 
-                      predecessors, cross_floor_config, task_type, repeat_on_floor):
-    """Save task with all parameters to database"""
-    try:
-        if is_new:
-            new_task = UserBaseTaskDB(
-                user_id=user_id,
-                name=name,
-                discipline=discipline,
-                resource_type=resource_type,
-                task_type=task_type,
-                base_duration=base_duration,
-                min_crews_needed=min_crews_needed,
-                min_equipment_needed=min_equipment_needed,
-                predecessors=predecessors,
-                delay=delay,
-                repeat_on_floor=repeat_on_floor,
-                cross_floor_dependencies=cross_floor_config.get('cross_floor_dependencies', []),
-                applies_to_floors=cross_floor_config.get('applies_to_floors', 'auto'),
-                created_by_user=True
-            )
-            session.add(new_task)
-        else:
-            # Update existing task
-            task.name = name
-            task.discipline = discipline
-            task.resource_type = resource_type
-            task.task_type = task_type
-            task.base_duration = base_duration
-            task.min_crews_needed = min_crews_needed
-            task.min_equipment_needed = min_equipment_needed
-            task.predecessors = predecessors
-            task.delay = delay
-            task.repeat_on_floor = repeat_on_floor
-            task.cross_floor_dependencies = cross_floor_config.get('cross_floor_dependencies', [])
-            task.applies_to_floors = cross_floor_config.get('applies_to_floors', 'auto')
-        
-        session.commit()
-        logger.info(f"✅ Task {'created' if is_new else 'updated'}: {name}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Failed to save task: {e}")
-        session.rollback()
-        return False
+
 
 def duplicate_task(original_task, user_id, modifications=None):
     """Duplicate a task with optional modifications"""
@@ -334,3 +289,63 @@ def get_user_task_count(user_id):
     except Exception as e:
         logger.error(f"❌ Failed to get task count: {e}")
         return 0
+
+def check_and_migrate_database():
+    """Check if database needs migration and apply changes safely"""
+    try:
+        with SessionLocal() as session:
+            # Check if migration is needed by testing the constraints
+            try:
+                # Try to insert a task with custom resource type
+                test_task = UserBaseTaskDB(
+                    user_id=1,
+                    name="Migration Test Task",
+                    discipline="Préliminaire",
+                    resource_type="TestResourceType",  # Custom type
+                    base_duration=None,  # NULL duration
+                    min_crews_needed=1,
+                    created_by_user=False
+                )
+                session.add(test_task)
+                session.commit()
+                
+                # If successful, delete test task and return
+                session.delete(test_task)
+                session.commit()
+                logger.info("✅ Database already supports flexible resource types and NULL durations")
+                return True
+                
+            except Exception as migration_needed:
+                # Migration is needed - apply changes
+                logger.info("🔄 Database needs migration, applying changes...")
+                session.rollback()
+                
+                # Apply migration SQL
+                with engine.connect() as conn:
+                    # Drop old constraint
+                    conn.execute(sa.text("""
+                        ALTER TABLE user_base_tasks 
+                        DROP CONSTRAINT IF EXISTS valid_resource_type
+                    """))
+                    
+                    # Make base_duration nullable
+                    conn.execute(sa.text("""
+                        ALTER TABLE user_base_tasks 
+                        ALTER COLUMN base_duration DROP NOT NULL
+                    """))
+                    
+                    # Add new constraint
+                    conn.execute(sa.text("""
+                        ALTER TABLE user_base_tasks 
+                        ADD CONSTRAINT positive_or_null_duration 
+                        CHECK (base_duration >= 0 OR base_duration IS NULL)
+                    """))
+                    
+                    conn.commit()
+                
+                logger.info("✅ Database migration completed successfully")
+                return True
+                
+    except Exception as e:
+        logger.error(f"❌ Database migration failed: {e}")
+        return False
