@@ -390,9 +390,6 @@ def main():
     # Initialize application backend
     if not initialize_application():
         st.stop()
-    if not st.session_state.get("logged_in", False):
-        st.info("Please login to access project modules.")
-        return
 
     # ✅ TEMPORARY: Add migration page for admin
     user_role = st.session_state["user"]["role"]
