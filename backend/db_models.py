@@ -4,8 +4,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
-
-Base = declarative_base()
+from backend.database import Base
 
 # Constants for validation
 VALID_ROLES = ['admin', 'manager', 'worker', 'viewer']
