@@ -62,7 +62,65 @@ def save_enhanced_task(session, task, is_new, user_id, name, discipline, resourc
         logger.error(f"❌ Failed to save task: {e}")
         session.rollback()
         return False
-
+python
+def copy_default_tasks_to_user(user_id: int, session) -> int:
+    """
+    Copy default tasks from defaults.py to a specific user
+    Returns number of tasks copied
+    """
+    try:
+        from defaults import BASE_TASKS
+        
+        # Get existing task names for this user to avoid duplicates
+        existing_tasks = session.query(UserBaseTaskDB.name).filter(
+            UserBaseTaskDB.user_id == user_id
+        ).all()
+        existing_task_names = {task[0] for task in existing_tasks}
+        
+        tasks_created = 0
+        for discipline, tasks in BASE_TASKS.items():
+            for base_task in tasks:
+                # Skip if task already exists for this user
+                if getattr(base_task, 'name', 'Unknown') in existing_task_names:
+                    continue
+                    
+                # Skip excluded tasks
+                if not getattr(base_task, 'included', True):
+                    continue
+                
+                # Create new task for user
+                new_task = UserBaseTaskDB(
+                    user_id=user_id,
+                    name=getattr(base_task, 'name', 'Unknown Task'),
+                    discipline=discipline,
+                    sub_discipline=getattr(base_task, 'sub_discipline', None),
+                    resource_type=getattr(base_task, 'resource_type', 'BétonArmée'),
+                    task_type=getattr(base_task, 'task_type', 'worker'),
+                    base_duration=getattr(base_task, 'base_duration', None),
+                    min_crews_needed=getattr(base_task, 'min_crews_needed', 1),
+                    min_equipment_needed=getattr(base_task, 'min_equipment_needed', {}),
+                    predecessors=getattr(base_task, 'predecessors', []),
+                    repeat_on_floor=getattr(base_task, 'repeat_on_floor', True),
+                    included=getattr(base_task, 'included', True),
+                    delay=getattr(base_task, 'delay', 0),
+                    cross_floor_dependencies=getattr(base_task, 'cross_floor_dependencies', []),
+                    applies_to_floors=getattr(base_task, 'applies_to_floors', 'auto'),
+                    created_by_user=False,  # Mark as system-created
+                    creator_id=user_id
+                )
+                session.add(new_task)
+                tasks_created += 1
+        
+        if tasks_created > 0:
+            session.commit()
+            logger.info(f"Copied {tasks_created} default tasks to user {user_id}")
+        
+        return tasks_created
+        
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error copying default tasks to user {user_id}: {e}")
+        return 0
 def create_default_tasks_from_defaults_py(user_id=None):
     """Create default tasks from defaults.py - INCLUDES sub_discipline"""
     try:
