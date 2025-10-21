@@ -1,82 +1,51 @@
 #!/usr/bin/env python3
-"""
-Comprehensive health check - UPDATED FOR CURRENT STRUCTURE
-"""
-
 import sys
 import os
-import tempfile
-
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.database import SessionLocal, check_database_health
-from backend.db_models import UserDB, UserBaseTaskDB  # ✅ UPDATED: UserBaseTaskDB instead of BaseTaskDB
+from backend.database import engine, SessionLocal
+import sqlalchemy as sa
 
-def health_check():
-    """Run comprehensive health checks"""
-    checks = {}
-    
-    print("🔍 Construction Manager - System Health Check")
-    print("=" * 50)
-    
-    # Database connection check
+def check_migration_status():
+    """Check if database has been properly migrated"""
     try:
-        health_status = check_database_health()
-        checks["database_connection"] = f"✅ {health_status['status']}"
-        print(f"✅ Database connection: {health_status['status']}")
-        
-        # Show pool status
-        pool = health_status.get('pool', {})
-        print(f"   Connection pool: {pool.get('checkedin', 0)} available, {pool.get('checkedout', 0)} in use")
-        
-    except Exception as e:
-        checks["database_connection"] = f"❌ Failed: {e}"
-        print(f"❌ Database connection: Failed - {e}")
-    
-    # Table existence and data check
-    try:
-        with SessionLocal() as session:
-            user_count = session.query(UserDB).count()
-            task_count = session.query(UserBaseTaskDB).count()  # ✅ UPDATED
+        with engine.connect() as conn:
+            # Check if resource_type constraint exists (should NOT exist)
+            result = conn.execute(sa.text("""
+                SELECT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints 
+                    WHERE table_name = 'user_base_tasks' 
+                    AND constraint_name = 'valid_resource_type'
+                )
+            """))
+            has_old_constraint = result.scalar()
             
-        checks["database_tables"] = f"✅ Healthy (Users: {user_count}, User Tasks: {task_count})"
-        print(f"✅ Database tables: Healthy - {user_count} users, {task_count} user tasks")
+            # Check if base_duration allows NULL
+            result = conn.execute(sa.text("""
+                SELECT is_nullable 
+                FROM information_schema.columns 
+                WHERE table_name = 'user_base_tasks' 
+                AND column_name = 'base_duration'
+            """))
+            allows_null = result.scalar() == 'YES'
+            
+            # Check default tasks exist
+            from backend.db_models import UserBaseTaskDB
+            with SessionLocal() as session:
+                task_count = session.query(UserBaseTaskDB).count()
+            
+            return {
+                "migration_status": "✅ Complete" if not has_old_constraint and allows_null else "❌ Needed",
+                "old_constraint_removed": not has_old_constraint,
+                "allows_null_duration": allows_null,
+                "total_tasks": task_count
+            }
+            
     except Exception as e:
-        checks["database_tables"] = f"❌ Failed: {e}"
-        print(f"❌ Database tables: Failed - {e}")
-    
-    # Directory permissions check
-    required_dirs = ["logs", "output", "temp"]
-    for directory in required_dirs:
-        try:
-            os.makedirs(directory, exist_ok=True)
-            with tempfile.NamedTemporaryFile(dir=directory, delete=True) as f:
-                f.write(b"test")
-            checks[f"directory_{directory}"] = "✅ Writable"
-            print(f"✅ Directory {directory}: Writable")
-        except Exception as e:
-            checks[f"directory_{directory}"] = f"❌ Not writable: {e}"
-            print(f"❌ Directory {directory}: Not writable - {e}")
-    
-    # Critical Python dependencies check
-    try:
-        import pandas as pd
-        import streamlit as st
-        import plotly
-        import sqlalchemy
-        checks["python_dependencies"] = "✅ All critical packages installed"
-        print("✅ Python dependencies: All critical packages installed")
-    except ImportError as e:
-        checks["python_dependencies"] = f"❌ Missing: {e}"
-        print(f"❌ Python dependencies: Missing - {e}")
-    
-    # Overall status
-    all_healthy = all("✅" in status for status in checks.values())
-    print("=" * 50)
-    print(f"Overall Status: {'✅ HEALTHY' if all_healthy else '❌ UNHEALTHY'}")
-    
-    return all_healthy
+        return {"error": str(e)}
 
 if __name__ == "__main__":
-    success = health_check()   
-    sys.exit(0 if success else 1)
+    status = check_migration_status()
+    print("🔍 Database Migration Status:")
+    for key, value in status.items():
+        print(f"  {key}: {value}"
