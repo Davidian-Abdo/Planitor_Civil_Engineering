@@ -144,59 +144,27 @@ def _create_default_users():
         logger.warning(f"Could not create default users: {e}")
 
 def _create_default_tasks_from_defaults():
-    """Create default construction tasks directly from defaults.py BASE_TASKS"""
+    """Create default construction tasks using the new system"""
     try:
-        # Import defaults.py directly
-        from defaults import BASE_TASKS
+        from backend.database_operations import create_default_tasks_from_defaults_py
         
         with SessionLocal() as session:
-            task_count = session.query(UserBaseTaskDB).count()  # ✅ FIXED: Changed from BaseTaskDB to UserBaseTaskDB
+            # Get admin user to assign tasks to
+            admin_user = session.query(UserDB).filter_by(username="admin").first()
+            if not admin_user:
+                logger.error("Admin user not found for task assignment")
+                return
             
-            if task_count == 0:
-                logger.info("Creating default construction tasks from defaults.py BASE_TASKS...")
-                
-                created_tasks = 0
-                for discipline, tasks in BASE_TASKS.items():
-                    logger.info(f"Processing {discipline} discipline with {len(tasks)} tasks")
-                    
-                    for base_task in tasks:
-                        # Skip if task is not included
-                        if not getattr(base_task, 'included', True):
-                            logger.debug(f"Skipping excluded task: {base_task.name}")
-                            continue
-                        
-                        # Convert BaseTask from defaults.py to UserBaseTaskDB
-                        db_task = UserBaseTaskDB(  # ✅ FIXED: Changed from BaseTaskDB to UserBaseTaskDB
-                            name=base_task.name,
-                            discipline=discipline,
-                            resource_type=base_task.resource_type,
-                            task_type=getattr(base_task, 'task_type', 'worker'),
-                            base_duration=getattr(base_task, 'base_duration', 1.0),
-                            min_crews_needed=getattr(base_task, 'min_crews_needed', 1),
-                            min_equipment_needed=getattr(base_task, 'min_equipment_needed', {}),
-                            predecessors=getattr(base_task, 'predecessors', []),
-                            repeat_on_floor=getattr(base_task, 'repeat_on_floor', True),
-                            included=getattr(base_task, 'included', True),
-                            delay=getattr(base_task, 'delay', 0),
-                            created_by_user=False
-                        )
-                        
-                        session.add(db_task)
-                        created_tasks += 1
-                        logger.debug(f"Added task: {base_task.name}")
-                
-                session.commit()
-                logger.info(f"✅ Created {created_tasks} default tasks from defaults.py")
-                
-                # Verify task creation
-                final_count = session.query(UserBaseTaskDB).count()  # ✅ FIXED: Changed from BaseTaskDB to UserBaseTaskDB
-                logger.info(f"✅ Database now contains {final_count} total tasks")
+            # Create default tasks assigned to admin
+            created_count = create_default_tasks_from_defaults_py(admin_user.id)
+            
+            if created_count > 0:
+                logger.info(f"✅ Created {created_count} default tasks for admin user")
             else:
-                logger.info(f"✅ {task_count} tasks already exist in database")
+                logger.info("✅ Default tasks already exist")
                 
     except Exception as e:
         logger.warning(f"Could not create default tasks: {e}")
-
 
 def _create_fallback_tasks():
     """Create minimal fallback tasks if defaults.py integration fails"""
