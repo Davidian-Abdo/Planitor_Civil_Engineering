@@ -7,18 +7,76 @@ from backend.db_models import UserBaseTaskDB, UserDB
 import logging
 
 logger = logging.getLogger(__name__)
-
-def copy_default_tasks_to_user(user_id):
-    """Copy default tasks to user's personal library"""
+def create_default_tasks_from_defaults_py(user_id=None):
+    """Create default tasks from defaults.py BASE_TASKS in the database"""
     try:
         with SessionLocal() as session:
-            # Get default tasks (system tasks or tasks with no specific user)
-            default_tasks = session.query(UserBaseTaskDB).filter(
-                (UserBaseTaskDB.user_id.is_(None)) | 
-                (UserBaseTaskDB.created_by_user == False)
-            ).all()
+            # Check if default tasks already exist
+            if user_id:
+                existing_count = session.query(UserBaseTaskDB).filter_by(user_id=user_id).count()
+            else:
+                existing_count = session.query(UserBaseTaskDB).filter_by(created_by_user=False).count()
+            
+            if existing_count > 0:
+                logger.info(f"✅ Default tasks already exist in database: {existing_count} tasks")
+                return existing_count
+            
+            # Import and convert BASE_TASKS from defaults.py
+            from defaults import BASE_TASKS
             
             created_count = 0
+            for discipline, tasks in BASE_TASKS.items():
+                for base_task in tasks:
+                    # Skip if task is not included
+                    if not getattr(base_task, 'included', True):
+                        continue
+                    
+                    # Convert BaseTask to UserBaseTaskDB
+                    db_task = UserBaseTaskDB(
+                        user_id=user_id,  # If None, becomes system task
+                        name=base_task.name,
+                        discipline=discipline,
+                        resource_type=getattr(base_task, 'resource_type', 'BétonArmée'),
+                        task_type=getattr(base_task, 'task_type', 'worker'),
+                        base_duration=getattr(base_task, 'base_duration', 1.0),
+                        min_crews_needed=getattr(base_task, 'min_crews_needed', 1),
+                        min_equipment_needed=getattr(base_task, 'min_equipment_needed', {}),
+                        predecessors=getattr(base_task, 'predecessors', []),
+                        repeat_on_floor=getattr(base_task, 'repeat_on_floor', True),
+                        included=getattr(base_task, 'included', True),
+                        delay=getattr(base_task, 'delay', 0),
+                        created_by_user=False  # Mark as system default task
+                    )
+                    
+                    session.add(db_task)
+                    created_count += 1
+            
+            session.commit()
+            logger.info(f"✅ Created {created_count} default tasks from defaults.py")
+            return created_count
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to create default tasks from defaults.py: {e}")
+        return 0
+
+def copy_default_tasks_to_user(user_id):
+    """Copy default tasks to user's personal library - ENHANCED VERSION"""
+    try:
+        with SessionLocal() as session:
+            # FIRST: Ensure default tasks exist in database
+            system_default_count = session.query(UserBaseTaskDB).filter_by(created_by_user=False).count()
+            
+            if system_default_count == 0:
+                st.info("🔄 Creating system default tasks first...")
+                created_count = create_default_tasks_from_defaults_py()  # Create system defaults
+                if created_count == 0:
+                    st.error("❌ Could not create system default tasks")
+                    return 0
+            
+            # NOW: Copy system defaults to user
+            default_tasks = session.query(UserBaseTaskDB).filter_by(created_by_user=False).all()
+            
+            user_created_count = 0
             for default_task in default_tasks:
                 # Check if user already has this task
                 existing = session.query(UserBaseTaskDB).filter(
@@ -34,7 +92,7 @@ def copy_default_tasks_to_user(user_id):
                         name=default_task.name,
                         discipline=default_task.discipline,
                         resource_type=default_task.resource_type,
-                        task_type=getattr(default_task, 'task_type', 'worker'),
+                        task_type=default_task.task_type,
                         base_duration=default_task.base_duration,
                         min_crews_needed=default_task.min_crews_needed,
                         min_equipment_needed=default_task.min_equipment_needed,
@@ -47,11 +105,11 @@ def copy_default_tasks_to_user(user_id):
                         created_by_user=True  # Mark as user's custom task
                     )
                     session.add(user_task)
-                    created_count += 1
+                    user_created_count += 1
             
             session.commit()
-            logger.info(f"✅ Copied {created_count} default tasks to user {user_id}")
-            return created_count
+            logger.info(f"✅ Copied {user_created_count} default tasks to user {user_id}")
+            return user_created_count
             
     except Exception as e:
         logger.error(f"❌ Failed to copy default tasks: {e}")
