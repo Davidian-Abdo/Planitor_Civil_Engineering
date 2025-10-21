@@ -95,7 +95,7 @@ def copy_default_tasks_to_user(user_id: int, session) -> int:
                     name=getattr(base_task, 'name', 'Unknown Task'),
                     discipline=discipline,
                     sub_discipline=getattr(base_task, 'sub_discipline', None),
-                    resource_type=getattr(base_task, 'resource_type', 'BétonArmée'),
+                    resource_type=getattr(base_task, 'resource_type', 'BétonArmé'),
                     task_type=getattr(base_task, 'task_type', 'worker'),
                     base_duration=getattr(base_task, 'base_duration', None),
                     min_crews_needed=getattr(base_task, 'min_crews_needed', 1),
@@ -260,7 +260,7 @@ def check_and_migrate_database():
                     name="Migration Test Task",
                     discipline="Préliminaires",
                     sub_discipline="TestSubDiscipline",  # ✅ TEST with sub_discipline
-                    resource_type="BétonArmée",
+                    resource_type="BétonArmé",
                     base_duration=None,
                     min_crews_needed=1,
                     created_by_user=False
