@@ -332,6 +332,48 @@ def initialize_application():
         logger.error(f"Application initialization failed: {e}")
         return False
 
+
+def migration_page():
+    """Temporary migration page - remove after migration is complete"""
+    st.title("🚀 Database Migration")
+    
+    if st.button("Run Database Migration", type="primary"):
+        try:
+            with st.spinner("Running database migration..."):
+                from backend.database_operations import check_and_migrate_database
+                success = check_and_migrate_database()
+                
+                if success:
+                    st.success("✅ Migration completed successfully!")
+                    st.balloons()
+                    
+                    # Create default tasks
+                    from backend.database_operations import create_default_tasks_from_defaults_py
+                    from backend.database import SessionLocal
+                    from backend.db_models import UserDB
+                    
+                    with SessionLocal() as session:
+                        admin_user = session.query(UserDB).filter_by(username="admin").first()
+                        if admin_user:
+                            task_count = create_default_tasks_from_defaults_py(admin_user.id)
+                            st.success(f"✅ Created {task_count} default tasks!")
+                        else:
+                            st.error("Admin user not found")
+                else:
+                    st.error("❌ Migration failed")
+                    
+        except Exception as e:
+            st.error(f"❌ Migration error: {e}")
+    
+    st.info("""
+    **What this migration does:**
+    - Removes resource type restrictions
+    - Allows NULL durations for scheduling engine
+    - Creates default construction tasks
+    """)
+
+  
+
 def main():
     """Main application entry point"""
     # Page configuration
@@ -348,7 +390,15 @@ def main():
     # Initialize application backend
     if not initialize_application():
         st.stop()
-    
+      if not st.session_state.get("logged_in", False):
+        st.info("Please login to access project modules.")
+        return
+
+    # ✅ TEMPORARY: Add migration page for admin
+    user_role = st.session_state["user"]["role"]
+    if user_role == "admin" and st.sidebar.button("🚀 Run Migration (Admin Only)"):
+        migration_page()
+        return
     # Check session timeout
     check_session_timeout()
     
