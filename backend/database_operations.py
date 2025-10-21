@@ -84,20 +84,6 @@ def create_default_tasks_from_defaults_py(user_id=None):
                         continue
                     
                     try:
-                        # ✅ EMERGENCY FIX: Convert tuple keys to strings for database
-                        min_equipment_needed = getattr(base_task, 'min_equipment_needed', {})
-                        if min_equipment_needed:
-                            fixed_equipment = {}
-                            for key, value in min_equipment_needed.items():
-                                if isinstance(key, tuple):
-                                    # Convert tuple to pipe-separated string: ("Pelle","Tractopelle") → "Pelle|Tractopelle"
-                                    fixed_key = "|".join(key)
-                                    fixed_equipment[fixed_key] = value
-                                    st.write(f"   🔄 Fixed tuple key: {key} → '{fixed_key}'")
-                                else:
-                                    fixed_equipment[key] = value
-                            min_equipment_needed = fixed_equipment
-                        
                         # ✅ PRESERVE None durations for scheduling engine calculation
                         base_duration = getattr(base_task, 'base_duration', None)
                         if base_duration is not None:
@@ -105,6 +91,20 @@ def create_default_tasks_from_defaults_py(user_id=None):
                                 base_duration = float(base_duration)
                             except (TypeError, ValueError):
                                 base_duration = None  # Keep as None if conversion fails
+                        
+                        # ✅ FIX: Convert tuple keys to pipe-separated strings for database
+                        min_equipment_needed = getattr(base_task, 'min_equipment_needed', {})
+                        if min_equipment_needed:
+                            fixed_equipment = {}
+                            for key, value in min_equipment_needed.items():
+                                if isinstance(key, tuple):
+                                    # Convert tuple to pipe-separated string
+                                    fixed_key = "|".join(key)
+                                    fixed_equipment[fixed_key] = value
+                                    st.write(f"   🔄 Fixed tuple key: {key} → '{fixed_key}'")
+                                else:
+                                    fixed_equipment[key] = value
+                            min_equipment_needed = fixed_equipment
                         
                         # Get resource type - accepts ANY string
                         resource_type = getattr(base_task, 'resource_type', 'BétonArmée')
@@ -135,9 +135,9 @@ def create_default_tasks_from_defaults_py(user_id=None):
                             discipline=discipline,
                             resource_type=resource_type,
                             task_type=task_type,
-                            base_duration=base_duration,  # ✅ Can be None
+                            base_duration=base_duration,  # ✅ Can be None (database now supports it)
                             min_crews_needed=min_crews_needed,
-                            min_equipment_needed=min_equipment_needed,  # ✅ Now with fixed tuple keys
+                            min_equipment_needed=min_equipment_needed,  # ✅ With fixed tuple keys
                             predecessors=predecessors,
                             repeat_on_floor=repeat_on_floor,
                             included=included,
