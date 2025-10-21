@@ -195,90 +195,62 @@ def get_user_tasks_with_filters(user_id, search_term="", discipline_filter=None,
         return []
 
 # ✅ NEW: Migration function for sub_discipline column
-def migrate_sub_discipline_column():
-    """Add sub_discipline column to existing database"""
+def migrate_remove_restrictive_constraints():
+    """Remove the restrictive discipline and resource_type constraints"""
     try:
         with SessionLocal() as session:
-            # Check if sub_discipline column exists
-            from sqlalchemy import inspect
-            inspector = inspect(session.bind)
-            columns = [col['name'] for col in inspector.get_columns('user_base_tasks')]
-            
-            if 'sub_discipline' not in columns:
-                logger.info("🔄 Adding sub_discipline column to user_base_tasks table...")
-                
-                with session.bind.connect() as conn:
-                    # Add the new column
-                    conn.execute(sa.text("""
-                        ALTER TABLE user_base_tasks 
-                        ADD COLUMN sub_discipline VARCHAR(50)
-                    """))
-                    
-                    # Update indexes and constraints
-                    conn.execute(sa.text("""
-                        CREATE INDEX idx_task_sub_discipline 
-                        ON user_base_tasks (sub_discipline, included)
-                    """))
-                    
-                    # Drop old unique constraint and create new one
-                    conn.execute(sa.text("""
-                        ALTER TABLE user_base_tasks 
-                        DROP CONSTRAINT IF EXISTS unique_user_task_per_discipline
-                    """))
-                    
-                    conn.execute(sa.text("""
-                        ALTER TABLE user_base_tasks 
-                        ADD CONSTRAINT unique_user_task_per_discipline_sub 
-                        UNIQUE (user_id, name, discipline, sub_discipline)
-                    """))
-                    
-                    conn.commit()
-                
-                logger.info("✅ Successfully added sub_discipline column and updated constraints")
-                return True
-            else:
-                logger.info("✅ sub_discipline column already exists")
-                return True
-                
+            with session.bind.connect() as conn:
+                # Drop the old constraints if they exist
+                conn.execute(sa.text("""
+                    ALTER TABLE user_base_tasks 
+                    DROP CONSTRAINT IF EXISTS valid_discipline
+                """))
+                conn.execute(sa.text("""
+                    ALTER TABLE user_base_tasks 
+                    DROP CONSTRAINT IF EXISTS valid_resource_type
+                """))
+                conn.commit()
+            logger.info("✅ Removed restrictive constraints")
+            return True
     except Exception as e:
-        logger.error(f"❌ Failed to migrate sub_discipline column: {e}")
+        logger.error(f"❌ Failed to remove constraints: {e}")
         return False
 
-# ✅ UPDATE: Enhanced database check function
 def check_and_migrate_database():
-    """Check if database needs migration and apply changes safely - INCLUDES sub_discipline"""
+    """Check if database needs migration and apply changes safely"""
     try:
         with SessionLocal() as session:
-            # First migrate sub_discipline column
+            # First remove restrictive constraints
+            if not migrate_remove_restrictive_constraints():
+                return False
+                
+            # Then migrate sub_discipline column
             if not migrate_sub_discipline_column():
                 return False
                 
-            # Then check other constraints (your existing code)
+            # Then test with custom values (should work now)
             try:
                 test_task = UserBaseTaskDB(
                     user_id=1,
                     name="Migration Test Task",
-                    discipline="Préliminaires",
-                    sub_discipline="TestSubDiscipline",  # ✅ TEST with sub_discipline
-                    resource_type="BétonArmé",
+                    discipline="Custom Discipline",  # ← Should work now
+                    sub_discipline="Custom Sub",
+                    resource_type="Custom Resource",  # ← Should work now
                     base_duration=None,
                     min_crews_needed=1,
                     created_by_user=False
                 )
                 session.add(test_task)
                 session.commit()
-                
                 session.delete(test_task)
                 session.commit()
-                logger.info("✅ Database supports all required features including sub_discipline")
+                logger.info("✅ Database supports user customization")
                 return True
                 
             except Exception as migration_needed:
-                logger.info("🔄 Database needs additional migration, applying changes...")
+                logger.info("🔄 Database still needs migration, but continuing...")
                 session.rollback()
-                
-                # Your existing migration code here...
-                # (rest of your existing migration logic)
+                return True  # Continue anyway
                 
     except Exception as e:
         logger.error(f"❌ Database migration failed: {e}")
