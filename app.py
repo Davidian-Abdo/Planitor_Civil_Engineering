@@ -540,14 +540,9 @@ def main():
     """Application entry point"""
     app = Application()
     ErrorHandler.handle_global_errors(app)
-    if BACKEND_AVAILABLE:
-        if not initialize_application():
-            st.error("Backend initialization failed")
-            st.stop()
-    else:
-        st.error("Backend system not available - check server logs")
-        st.stop(
-    
+
+if __name__ == "__main__":
+    main()
     
 
 
