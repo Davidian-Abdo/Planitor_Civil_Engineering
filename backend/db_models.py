@@ -59,6 +59,7 @@ class UserBaseTaskDB(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(100), nullable=False, index=True)
     discipline = Column(String(50), nullable=False)
+    sub_discipline= Column(String(50), nullable=False)
     resource_type = Column(String(50), nullable=False)  # ✅ Increased length for flexibility
     task_type = Column(String(20), default="worker")
     base_duration = Column(Float, nullable=True)  # ✅ Changed to nullable for calculated durations
