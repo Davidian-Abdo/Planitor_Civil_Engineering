@@ -12,6 +12,26 @@ from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from sqlalchemy.pool import QueuePool, StaticPool
 
 logger = logging.getLogger(__name__)
+def save_discipline_zone_config(session, project_id, discipline_zone_cfg):
+    """
+    Save discipline-zone configuration for a specific project.
+    """
+    from backend.db_models import DisciplineZoneConfigDB
+
+    cfg = DisciplineZoneConfigDB(
+        project_id=project_id,
+        config_data=discipline_zone_cfg
+    )
+    session.add(cfg)
+    session.commit()
+    return cfg
+
+def get_discipline_zone_config(session, project_id):
+    """Retrieve saved discipline-zone configuration for a project."""
+    from backend.db_models import DisciplineZoneConfigDB
+    cfg = session.query(DisciplineZoneConfigDB).filter_by(project_id=project_id).first()
+    return cfg.config_data if cfg else {}
+
 
 class DatabaseConfig:
     """
