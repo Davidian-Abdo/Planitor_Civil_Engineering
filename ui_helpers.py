@@ -5,7 +5,8 @@ from backend.db_models import UserBaseTaskDB
 from defaults import disciplines
 from models import DisciplineZoneConfig
 from backend.database_operations import (
-    save_enhanced_task, duplicate_task, delete_task, get_user_tasks_with_filters
+    copy_default_tasks_to_user, save_enhanced_task, duplicate_task, 
+    delete_task, get_user_tasks_with_filters, get_user_task_count
 )
 # ==================== CONSTRAINTS & CONFIGURATION ====================
 class SimpleConstraintManager:
@@ -531,45 +532,127 @@ def render_discipline_zone_config(disciplines, zones, key_prefix="disc_zone_cfg"
     
     return cfg
 
+# ADD THESE NEW FUNCTIONS:
+
 def enhanced_task_management():
-    """Professional task management with table view and bulk operations"""
+    """Professional task management with auto-creation of default tasks"""
     st.subheader("📝 Construction Task Library")
     
-    # Get current user ID (numeric)
+    # Get current user ID
     current_user_id = st.session_state["user"]["id"]
+    current_username = st.session_state["user"]["username"]
+    user_role = st.session_state["user"]["role"]
     
-    # Top action bar
-    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+    # Check if user has any tasks
+    user_task_count = get_user_task_count(current_user_id)
+    
+    # Show empty state with import options
+    if user_task_count == 0:
+        show_empty_state(current_user_id, current_username, user_role)
+        return
+    
+    # User has tasks - show full management interface
+    show_task_management_interface(current_user_id, user_role)
+
+def show_empty_state(user_id, username, user_role):
+    """Show empty state with import options"""
+    st.warning("🎯 No personal tasks found in your library.")
+    
+    st.markdown("""
+    ### Get Started with Your Task Library:
+    
+    Choose how you'd like to start building your construction task library:
+    """)
+    
+    col1, col2, col3 = st.columns(3)
+    
     with col1:
-        search_term = st.text_input("🔍 Search tasks...", placeholder="Search by name or discipline")
+        st.markdown("#### 📥 Option 1: Import Defaults")
+        st.markdown("""
+        - **Best for new users**
+        - Get 50+ pre-configured construction tasks
+        - Based on industry standards
+        - Fully customizable afterward
+        """)
+        if st.button("🚀 Import Default Tasks", use_container_width=True, key="import_defaults"):
+            with st.spinner("Importing default construction tasks..."):
+                created_count = copy_default_tasks_to_user(user_id)
+                if created_count > 0:
+                    st.success(f"✅ Imported {created_count} default tasks to your library!")
+                    st.balloons()
+                    st.rerun()
+                else:
+                    st.error("❌ No default tasks available to import")
+    
     with col2:
-        discipline_filter = st.multiselect("Discipline", disciplines, default=[], placeholder="All disciplines")
-    with col3:
-        if st.button("➕ New Task", use_container_width=True):
+        st.markdown("#### 🆕 Option 2: Start Fresh")
+        st.markdown("""
+        - **Best for experts**
+        - Create tasks from scratch
+        - Complete control over everything
+        - Build your proprietary library
+        """)
+        if st.button("✨ Create First Task", use_container_width=True, key="create_first"):
             st.session_state["creating_new_task"] = True
             st.session_state["editing_task_id"] = None
-    with col4:
-        if st.button("📥 Import Template", use_container_width=True):
-            show_import_template_modal(current_user_id)
+            st.rerun()
     
-    # Load tasks
-    with SessionLocal() as session:
-        tasks = load_user_tasks(session, current_user_id, search_term, discipline_filter)
-        
-        # Display as styled table
-        display_task_table(tasks, current_user_id)
-        
-        # Task editor (appears below table when editing/creating)
-        if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
-            st.markdown("---")
-            display_task_editor(session, current_user_id)
+    with col3:
+        st.markdown("#### 📋 Option 3: Use Templates")
+        st.markdown("""
+        - **Best for specific projects**
+        - Import from Excel templates
+        - Bulk task creation
+        - Standardized formats
+        """)
+        if st.button("📊 Import from Template", use_container_width=True, key="import_template"):
+            show_import_template_modal(user_id)
+    
+    st.markdown("---")
+    st.info("💡 **Recommendation**: Most users start with **Import Defaults** to get a complete foundation, then customize as needed.")
+
+def show_task_management_interface(user_id, user_role):
+    """Show full task management interface"""
+    # Top action bar
+    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
+    
+    with col1:
+        search_term = st.text_input("🔍 Search tasks...", placeholder="Search by name, discipline, or resource type")
+    
+    with col2:
+        discipline_filter = st.multiselect("Discipline", disciplines, default=[], placeholder="All")
+    
+    with col3:
+        if st.button("➕ New", use_container_width=True, help="Create new task"):
+            st.session_state["creating_new_task"] = True
+            st.session_state["editing_task_id"] = None
+    
+    with col4:
+        if st.button("📥 Import", use_container_width=True, help="Import from templates"):
+            show_import_template_modal(user_id)
+    
+    with col5:
+        task_count = get_user_task_count(user_id)
+        st.metric("Your Tasks", task_count)
+    
+    # Load and display tasks
+    tasks = get_user_tasks_with_filters(user_id, search_term, discipline_filter)
+    
+    if not tasks:
+        st.info("🔍 No tasks match your search criteria. Try different filters or create a new task.")
+        return
+    
+    # Display tasks in professional table
+    display_task_table(tasks, user_id)
+    
+    # Task editor (appears when editing/creating)
+    if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
+        st.markdown("---")
+        with SessionLocal() as session:
+            display_task_editor(session, user_id)
 
 def display_task_table(tasks, user_id):
     """Display tasks as a professional styled table with actions"""
-    if not tasks:
-        st.info("📭 No tasks found. Create your first task to get started!")
-        return
-    
     # Convert to DataFrame for nice display
     task_data = []
     for task in tasks:
@@ -577,17 +660,17 @@ def display_task_table(tasks, user_id):
             "ID": task.id,
             "Name": task.name,
             "Discipline": task.discipline,
-            "Resource Type": task.resource_type,
-            "Duration (days)": task.base_duration,
+            "Resource": task.resource_type,
+            "Days": task.base_duration,
             "Crews": task.min_crews_needed,
-            "Equipment": str(task.min_equipment_needed or {}),
+            "Equipment": len(task.min_equipment_needed) if task.min_equipment_needed else 0,
             "Predecessors": len(task.predecessors or []),
             "Cross-Floor": len(task.cross_floor_dependencies or [])
         })
     
     df = pd.DataFrame(task_data)
     
-    # Display with actions
+    # Display dataframe
     st.dataframe(
         df,
         use_container_width=True,
@@ -596,42 +679,51 @@ def display_task_table(tasks, user_id):
             "ID": st.column_config.NumberColumn("ID", width="small"),
             "Name": st.column_config.TextColumn("Task Name", width="large"),
             "Discipline": st.column_config.TextColumn("Discipline", width="medium"),
-            "Duration (days)": st.column_config.NumberColumn("Days", width="small"),
+            "Resource": st.column_config.TextColumn("Resource", width="small"),
+            "Days": st.column_config.NumberColumn("Days", width="small"),
             "Crews": st.column_config.NumberColumn("Crews", width="small"),
+            "Equipment": st.column_config.NumberColumn("Equipment", width="small"),
             "Predecessors": st.column_config.NumberColumn("Predecessors", width="small"),
             "Cross-Floor": st.column_config.NumberColumn("Cross-Floor", width="small"),
         }
     )
     
-    # Action buttons for each task
-    st.markdown("### 🛠️ Task Actions")
-    cols = st.columns(5)
+    # Quick actions for each task
+    st.markdown("### 🛠️ Quick Actions")
+    cols = st.columns(4)
     for idx, task in enumerate(tasks):
-        col = cols[idx % 5]
+        col = cols[idx % 4]
         with col:
             with st.container():
                 st.markdown(f"**{task.name}**")
-                st.caption(f"{task.discipline} • {task.base_duration}d")
+                st.caption(f"{task.discipline} • {task.resource_type} • {task.base_duration}d")
                 
                 # Action buttons
                 btn_col1, btn_col2, btn_col3 = st.columns(3)
                 with btn_col1:
-                    if st.button("✏️", key=f"edit_{task.id}", help="Edit task"):
+                    if st.button("✏️", key=f"edit_{task.id}", help="Edit task", use_container_width=True):
                         st.session_state["editing_task_id"] = task.id
                         st.session_state["creating_new_task"] = False
                         st.rerun()
                 with btn_col2:
-                    if st.button("📋", key=f"duplicate_{task.id}", help="Duplicate task"):
-                        duplicate_task(task, user_id)
-                        st.rerun()
-                with btn_col3:
-                    if st.button("🗑️", key=f"delete_{task.id}", help="Delete task"):
-                        if st.session_state.get(f"confirm_delete_{task.id}"):
-                            delete_task(task.id, user_id)
+                    if st.button("📋", key=f"duplicate_{task.id}", help="Duplicate task", use_container_width=True):
+                        if duplicate_task(task, user_id):
+                            st.success("✅ Task duplicated!")
                             st.rerun()
+                        else:
+                            st.error("❌ Failed to duplicate task")
+                with btn_col3:
+                    if st.button("🗑️", key=f"delete_{task.id}", help="Delete task", use_container_width=True):
+                        if st.session_state.get(f"confirm_delete_{task.id}"):
+                            if delete_task(task.id, user_id):
+                                st.success("✅ Task deleted!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to delete task")
                         else:
                             st.session_state[f"confirm_delete_{task.id}"] = True
                             st.warning("Click again to confirm deletion")
+                st.divider()
 
 def display_task_editor(session, user_id):
     """Comprehensive task editor with all parameters"""
@@ -764,14 +856,18 @@ def display_task_editor(session, user_id):
         with col1:
             if st.form_submit_button("💾 Save Task", use_container_width=True):
                 if not task_name:
-                    st.error("Task name is required")
+                    st.error("❌ Task name is required")
                 else:
-                    save_enhanced_task(
+                    success = save_enhanced_task(
                         session, task, is_new, user_id, task_name, discipline, 
                         resource_type, base_duration, min_crews_needed, delay,
                         min_equipment_needed, predecessor_ids, cross_floor_config,
                         task_type, repeat_on_floor
                     )
+                    if success:
+                        st.session_state.pop("editing_task_id", None)
+                        st.session_state.pop("creating_new_task", None)
+                        st.rerun()
         with col2:
             if st.form_submit_button("❌ Cancel", use_container_width=True):
                 st.session_state.pop("editing_task_id", None)
@@ -779,21 +875,12 @@ def display_task_editor(session, user_id):
                 st.rerun()
         with col3:
             if task and st.form_submit_button("📋 Save as Copy", use_container_width=True):
-                duplicate_task(task, user_id, modifications={
+                success = duplicate_task(task, user_id, modifications={
                     'name': f"{task_name} (Copy)",
                     'base_duration': base_duration,
                     'min_crews_needed': min_crews_needed
                 })
-
-def load_user_tasks(session, user_id, search_term="", discipline_filter=None):
-    """Load tasks with filtering"""
-    query = session.query(UserBaseTaskDB).filter(UserBaseTaskDB.user_id == user_id)
-    
-    # Apply filters
-    if search_term:
-        query = query.filter(UserBaseTaskDB.name.ilike(f"%{search_term}%"))
-    
-    if discipline_filter:
-        query = query.filter(UserBaseTaskDB.discipline.in_(discipline_filter))
-    
-    return query.order_by(UserBaseTaskDB.discipline, UserBaseTaskDB.name).all()
+                if success:
+                    st.session_state.pop("editing_task_id", None)
+                    st.session_state.pop("creating_new_task", None)
+                    st.rerun()
