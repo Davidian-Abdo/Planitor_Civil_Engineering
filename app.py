@@ -311,12 +311,16 @@ def initialize_application():
         if not st.session_state.backend_initialized:
             with st.spinner("🚀 Initializing Construction Manager..."):
                 # ✅ NEW: Run index fix before initialization
+                # ✅ RUN EMERGENCY FIX FIRST
                 try:
-                    from fix_indexes import drop_problematic_indexes
-                    drop_problematic_indexes()
-                    logger.info("✅ Duplicate indexes cleaned up")
+                    from scripts.emergency_fix_null_duration import emergency_fix_null_duration
+                    if emergency_fix_null_duration():
+                        st.success("✅ Database constraints fixed!")
+                    else:
+                        st.error("❌ Database fix failed, but continuing...")
                 except Exception as e:
-                    logger.warning(f"⚠️ Index cleanup skipped: {e}")
+                    st.warning(f"⚠️ Emergency fix skipped: {e}")
+                
                 init_backend()
                 st.session_state.backend_initialized = True
                 st.session_state.app_ready = True
