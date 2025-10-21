@@ -390,9 +390,6 @@ def main():
     # Initialize application backend
     if not initialize_application():
         st.stop()
-
-    # ✅ TEMPORARY: Add migration page for admin
-    user_role = st.session_state["user"]["role"]
     
     # Check session timeout
     check_session_timeout()
