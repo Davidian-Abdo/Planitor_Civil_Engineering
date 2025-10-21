@@ -62,7 +62,7 @@ def save_enhanced_task(session, task, is_new, user_id, name, discipline, resourc
         logger.error(f"❌ Failed to save task: {e}")
         session.rollback()
         return False
-python
+
 def copy_default_tasks_to_user(user_id: int, session) -> int:
     """
     Copy default tasks from defaults.py to a specific user
