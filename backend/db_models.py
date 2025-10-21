@@ -22,7 +22,7 @@ VALID_DISCIPLINES = {
     'TechniquesSpéciales': ['Électricité', 'Plomberie', 'CVCA'],
     'AménagementsExtérieurs': ['VRD', 'EspacesVerts']
 }
-VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']',
+VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']
 class LoginAttemptDB(Base):
     __tablename__ = "login_attempts"
     id = Column(Integer, primary_key=True)
