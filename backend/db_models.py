@@ -9,19 +9,22 @@ from backend.database import Base
 # Constants for validation
 VALID_ROLES = ['admin', 'manager', 'worker', 'viewer']
 VALID_TASK_TYPES = ['worker', 'equipment', 'hybrid']
-VALID_RESOURCE_TYPES = ['BétonArmée', 'Férrailleur', 'ConstMéttalique', 'plaquiste', 'Maçon', 'Etanchiéste', 'Revetement', 'Peintre', 'Topograph', 'charpentier', 'Soudeur', 'Agent de Netoyage', 'Ascensoriste']
 VALID_DISCIPLINES = {
     'Préliminaires': ['InstallationChantier', 'PréparationTerrain'],
-    'Terrassement': ['Décapage', 'Excavation', 'Soutènement'],
-    'Fondations': {
-        'FondationsSuperficielles': ['Semelles', 'Radiers', 'Dallages'],
-        'FondationsProfondes': ['Pieux', 'ParoisMoulées', 'Inclusions', 'MicroPieux']
-    },
-    'GrosŒuvre': ['StructureBéton', 'StructureMétallique', 'Maçonnerie'],
-    'SecondŒuvre': ['Cloisons', 'Revêtements', 'Menuiseries'],
-    'TechniquesSpéciales': ['Électricité', 'Plomberie', 'CVCA'],
+    'Terrassement': ['Décapage', 'Excavation', 'Soutènement Temporaire','Soutènement Permanant'],
+    'FondationsProfondes': ['Pieux', 'ParoisMoulées', 'Inclusions', 'MicroPieux'],
+    'GrosŒuvre': ['FondationsSuperficielles', 'StructureBéton', 'StructureMétallique'],
+    'SecondŒuvre': ['Cloisons', 'Revêtements', 'Menuiseries','Faux-plafond'],
+    'Lots techniques': ['CFO','CFA' , 'Ventillation', 'climatisation','Plomberie'],
     'AménagementsExtérieurs': ['VRD', 'EspacesVerts']
 }
+VALID_RESOURCE_TYPES = [
+    'BétonArmé', 'Ferrailleur', 'Plaquiste', 'Maçon', 
+    'Étanchéiste', 'Staffeur', 'Peintre', 'Topographe', 'Charpentier', 
+    'Soudeur', 'Agent de netoyage', 'Ascensoriste', 'Grutier', 'ConducteurEngins',
+     'OpérateurMalaxeur', 'OpérateurJetGrouting','Carreleur-Marbrier'
+]
+
 VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']
 class LoginAttemptDB(Base):
     __tablename__ = "login_attempts"
