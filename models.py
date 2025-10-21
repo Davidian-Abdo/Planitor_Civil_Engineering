@@ -37,6 +37,7 @@ class BaseTask:
     id: str
     name: str
     discipline: str
+    sub_discipline: str
     resource_type: str                   # logical resource name (worker pool) for worker/hybrid tasks      
     predecessors: List[str] = field(default_factory=list)
     task_type: str = "worker"            # worker | equipment | hybrid
@@ -60,6 +61,7 @@ class Task:
     base_duration: int
     predecessors: list
     discipline: str
+    sub_discipline: str
     resource_type: str
     min_crews_needed: Optional[int] = None
     min_equipment_needed: Optional[Dict[str, int]] = None
