@@ -84,6 +84,20 @@ def create_default_tasks_from_defaults_py(user_id=None):
                         continue
                     
                     try:
+                        # ✅ EMERGENCY FIX: Convert tuple keys to strings for database
+                        min_equipment_needed = getattr(base_task, 'min_equipment_needed', {})
+                        if min_equipment_needed:
+                            fixed_equipment = {}
+                            for key, value in min_equipment_needed.items():
+                                if isinstance(key, tuple):
+                                    # Convert tuple to pipe-separated string: ("Pelle","Tractopelle") → "Pelle|Tractopelle"
+                                    fixed_key = "|".join(key)
+                                    fixed_equipment[fixed_key] = value
+                                    st.write(f"   🔄 Fixed tuple key: {key} → '{fixed_key}'")
+                                else:
+                                    fixed_equipment[key] = value
+                            min_equipment_needed = fixed_equipment
+                        
                         # ✅ PRESERVE None durations for scheduling engine calculation
                         base_duration = getattr(base_task, 'base_duration', None)
                         if base_duration is not None:
@@ -109,7 +123,6 @@ def create_default_tasks_from_defaults_py(user_id=None):
                             delay = int(delay)
                         
                         # Get other attributes with safe defaults
-                        min_equipment_needed = getattr(base_task, 'min_equipment_needed', {})
                         predecessors = getattr(base_task, 'predecessors', [])
                         repeat_on_floor = bool(getattr(base_task, 'repeat_on_floor', True))
                         included = bool(getattr(base_task, 'included', True))
@@ -124,7 +137,7 @@ def create_default_tasks_from_defaults_py(user_id=None):
                             task_type=task_type,
                             base_duration=base_duration,  # ✅ Can be None
                             min_crews_needed=min_crews_needed,
-                            min_equipment_needed=min_equipment_needed,
+                            min_equipment_needed=min_equipment_needed,  # ✅ Now with fixed tuple keys
                             predecessors=predecessors,
                             repeat_on_floor=repeat_on_floor,
                             included=included,
