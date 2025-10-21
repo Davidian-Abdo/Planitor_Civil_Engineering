@@ -144,7 +144,7 @@ def _create_default_users():
         logger.warning(f"Could not create default users: {e}")
 
 def _create_default_tasks_from_defaults():
-    """Create default construction tasks using the new system"""
+    """Create default construction tasks using the new flexible system"""
     try:
         from backend.database_operations import create_default_tasks_from_defaults_py
         
@@ -161,7 +161,7 @@ def _create_default_tasks_from_defaults():
             if created_count > 0:
                 logger.info(f"✅ Created {created_count} default tasks for admin user")
             else:
-                logger.info("✅ Default tasks already exist")
+                logger.info("✅ Default tasks already exist or creation failed")
                 
     except Exception as e:
         logger.warning(f"Could not create default tasks: {e}")
