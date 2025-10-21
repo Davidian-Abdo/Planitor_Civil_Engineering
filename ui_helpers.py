@@ -543,6 +543,11 @@ def enhanced_task_management():
     current_username = st.session_state["user"]["username"]
     user_role = st.session_state["user"]["role"]
     
+    # ✅ TEMPORARY DEBUG BUTTON - REMOVE LATER
+    if st.sidebar.button("🛠️ Debug Task System"):
+        debug_task_system()
+        return
+    
     # Check if user has any tasks
     user_task_count = get_user_task_count(current_user_id)
     
@@ -884,3 +889,20 @@ def display_task_editor(session, user_id):
                     st.session_state.pop("editing_task_id", None)
                     st.session_state.pop("creating_new_task", None)
                     st.rerun()
+
+def debug_task_system():
+    """Debug function to check what's happening with tasks"""
+    with SessionLocal() as session:
+        # Check different types of tasks
+        total_tasks = session.query(UserBaseTaskDB).count()
+        system_tasks = session.query(UserBaseTaskDB).filter_by(created_by_user=False).count()
+        user_tasks = session.query(UserBaseTaskDB).filter_by(created_by_user=True).count()
+        
+        st.write(f"🔍 DEBUG - Total tasks in DB: {total_tasks}")
+        st.write(f"🔍 DEBUG - System default tasks: {system_tasks}")
+        st.write(f"🔍 DEBUG - User custom tasks: {user_tasks}")
+        
+        # Show some example tasks
+        example_tasks = session.query(UserBaseTaskDB).limit(5).all()
+        for task in example_tasks:
+            st.write(f" - {task.name} (User: {task.user_id}, System: {not task.created_by_user})")
