@@ -10,8 +10,18 @@ from backend.database import Base
 VALID_ROLES = ['admin', 'manager', 'worker', 'viewer']
 VALID_TASK_TYPES = ['worker', 'equipment', 'hybrid']
 VALID_RESOURCE_TYPES = ['BétonArmée', 'Férrailleur', 'ConstMéttalique', 'plaquiste', 'Maçon', 'Etanchiéste', 'Revetement', 'Peintre', 'Topograph', 'charpentier', 'Soudeur', 'Agent de Netoyage', 'Ascensoriste']
-
-VALID_DISCIPLINES = ['Préliminaire', 'Terrassement', 'Fondations profonds','souténement temporaire','Souténement permanant','Etanchéité', 'Gros-Oeuvres', 'VRD', 'Maçonnerie', 'cloisennement', 'Faux-plafond', 'Revetement', 'Peinture', 'CFO-CFA', 'Lots fluides', "Installation d'ascenseurs", 'Aménagement extérieur']
+VALID_DISCIPLINES = {
+    'Préliminaires': ['InstallationChantier', 'PréparationTerrain'],
+    'Terrassement': ['Décapage', 'Excavation', 'Soutènement'],
+    'Fondations': {
+        'FondationsSuperficielles': ['Semelles', 'Radiers', 'Dallages'],
+        'FondationsProfondes': ['Pieux', 'ParoisMoulées', 'Inclusions', 'MicroPieux']
+    },
+    'GrosŒuvre': ['StructureBéton', 'StructureMétallique', 'Maçonnerie'],
+    'SecondŒuvre': ['Cloisons', 'Revêtements', 'Menuiseries'],
+    'TechniquesSpéciales': ['Électricité', 'Plomberie', 'CVCA'],
+    'AménagementsExtérieurs': ['VRD', 'EspacesVerts']
+}
 VALID_SCHEDULE_STATUS = ['scheduled', 'in_progress', 'completed', 'delayed']',
 class LoginAttemptDB(Base):
     __tablename__ = "login_attempts"
@@ -52,6 +62,25 @@ class UserDB(Base):
     def __repr__(self):
         return f"<User {self.username} ({self.role})>"
 
+# Update VALID_DISCIPLINES to include sub-disciplines structure
+
+
+# Add this helper function for discipline validation
+def get_all_disciplines_flat():
+    """Return a flat list of all valid disciplines for database constraints"""
+    flat_list = []
+    for discipline, subdisciplines in VALID_DISCIPLINES.items():
+        flat_list.append(discipline)
+        if isinstance(subdisciplines, list):
+            flat_list.extend(subdisciplines)
+        elif isinstance(subdisciplines, dict):
+            for main_sub, subs in subdisciplines.items():
+                flat_list.append(main_sub)
+                flat_list.extend(subs)
+    return list(set(flat_list))
+
+VALID_DISCIPLINES_FLAT = get_all_disciplines_flat()
+
 class UserBaseTaskDB(Base):
     __tablename__ = "user_base_tasks"
 
@@ -59,10 +88,10 @@ class UserBaseTaskDB(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(100), nullable=False, index=True)
     discipline = Column(String(50), nullable=False)
-    sub_discipline= Column(String(50), nullable=False)
-    resource_type = Column(String(50), nullable=False)  # ✅ Increased length for flexibility
+    sub_discipline = Column(String(50), nullable=True)  # ✅ NEW: Make nullable for backward compatibility
+    resource_type = Column(String(50), nullable=False)
     task_type = Column(String(20), default="worker")
-    base_duration = Column(Float, nullable=True)  # ✅ Changed to nullable for calculated durations
+    base_duration = Column(Float, nullable=True)
     min_crews_needed = Column(Integer, default=1)
     min_equipment_needed = Column(JSON, default=lambda: {})
     predecessors = Column(JSON, default=lambda: [])
@@ -85,20 +114,20 @@ class UserBaseTaskDB(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     creator = relationship("UserDB", foreign_keys=[creator_id])
-    # ✅ FIXED: Remove resource_type constraint, keep only essential constraints
+    
+    # ✅ UPDATED: Add sub_discipline to constraints and indexes
     __table_args__ = (
         CheckConstraint(f"task_type IN ({', '.join(repr(r) for r in VALID_TASK_TYPES)})", name="valid_task_type"),
-        CheckConstraint(f"discipline IN ({', '.join(repr(d) for d in VALID_DISCIPLINES)})", name="valid_discipline"),
-        CheckConstraint("base_duration >= 0 OR base_duration IS NULL", name="positive_or_null_duration"),  # ✅ Allow NULL
+        CheckConstraint(f"discipline IN ({', '.join(repr(d) for d in VALID_DISCIPLINES_FLAT)})", name="valid_discipline"),
+        CheckConstraint("base_duration >= 0 OR base_duration IS NULL", name="positive_or_null_duration"),
         CheckConstraint("min_crews_needed >= 0", name="non_negative_crews"),
         CheckConstraint("delay >= 0", name="non_negative_delay"),
         Index('idx_task_discipline_included', 'discipline', 'included'),
+        Index('idx_task_sub_discipline', 'sub_discipline', 'included'),  # ✅ NEW INDEX
         Index('idx_task_creator', 'creator_id', 'created_at'),
         Index('idx_task_resource_type', 'resource_type', 'included'),
         Index('idx_user_tasks_user', 'user_id', 'included'),
-        UniqueConstraint('user_id', 'name', 'discipline', name='unique_user_task_per_discipline'),
-    )
-
+        UniqueConstraint('user_id', 'name', 'discipline', 'sub_discipline', name='unique_user_task_per_discipline_sub'),  # ✅ UPDATED
 class DisciplineZoneConfigDB(Base):
     __tablename__ = "discipline_zone_config"
 
