@@ -528,3 +528,270 @@ def render_discipline_zone_config(disciplines, zones, key_prefix="disc_zone_cfg"
             )
     
     return cfg
+
+def enhanced_task_management():
+    """Professional task management with table view and bulk operations"""
+    st.subheader("📝 Construction Task Library")
+    
+    # Get current user ID (numeric)
+    current_user_id = st.session_state["user"]["id"]
+    
+    # Top action bar
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
+    with col1:
+        search_term = st.text_input("🔍 Search tasks...", placeholder="Search by name or discipline")
+    with col2:
+        discipline_filter = st.multiselect("Discipline", disciplines, default=[], placeholder="All disciplines")
+    with col3:
+        if st.button("➕ New Task", use_container_width=True):
+            st.session_state["creating_new_task"] = True
+            st.session_state["editing_task_id"] = None
+    with col4:
+        if st.button("📥 Import Template", use_container_width=True):
+            show_import_template_modal(current_user_id)
+    
+    # Load tasks
+    with SessionLocal() as session:
+        tasks = load_user_tasks(session, current_user_id, search_term, discipline_filter)
+        
+        # Display as styled table
+        display_task_table(tasks, current_user_id)
+        
+        # Task editor (appears below table when editing/creating)
+        if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
+            st.markdown("---")
+            display_task_editor(session, current_user_id)
+
+def display_task_table(tasks, user_id):
+    """Display tasks as a professional styled table with actions"""
+    if not tasks:
+        st.info("📭 No tasks found. Create your first task to get started!")
+        return
+    
+    # Convert to DataFrame for nice display
+    task_data = []
+    for task in tasks:
+        task_data.append({
+            "ID": task.id,
+            "Name": task.name,
+            "Discipline": task.discipline,
+            "Resource Type": task.resource_type,
+            "Duration (days)": task.base_duration,
+            "Crews": task.min_crews_needed,
+            "Equipment": str(task.min_equipment_needed or {}),
+            "Predecessors": len(task.predecessors or []),
+            "Cross-Floor": len(task.cross_floor_dependencies or [])
+        })
+    
+    df = pd.DataFrame(task_data)
+    
+    # Display with actions
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "ID": st.column_config.NumberColumn("ID", width="small"),
+            "Name": st.column_config.TextColumn("Task Name", width="large"),
+            "Discipline": st.column_config.TextColumn("Discipline", width="medium"),
+            "Duration (days)": st.column_config.NumberColumn("Days", width="small"),
+            "Crews": st.column_config.NumberColumn("Crews", width="small"),
+            "Predecessors": st.column_config.NumberColumn("Predecessors", width="small"),
+            "Cross-Floor": st.column_config.NumberColumn("Cross-Floor", width="small"),
+        }
+    )
+    
+    # Action buttons for each task
+    st.markdown("### 🛠️ Task Actions")
+    cols = st.columns(5)
+    for idx, task in enumerate(tasks):
+        col = cols[idx % 5]
+        with col:
+            with st.container():
+                st.markdown(f"**{task.name}**")
+                st.caption(f"{task.discipline} • {task.base_duration}d")
+                
+                # Action buttons
+                btn_col1, btn_col2, btn_col3 = st.columns(3)
+                with btn_col1:
+                    if st.button("✏️", key=f"edit_{task.id}", help="Edit task"):
+                        st.session_state["editing_task_id"] = task.id
+                        st.session_state["creating_new_task"] = False
+                        st.rerun()
+                with btn_col2:
+                    if st.button("📋", key=f"duplicate_{task.id}", help="Duplicate task"):
+                        duplicate_task(task, user_id)
+                        st.rerun()
+                with btn_col3:
+                    if st.button("🗑️", key=f"delete_{task.id}", help="Delete task"):
+                        if st.session_state.get(f"confirm_delete_{task.id}"):
+                            delete_task(task.id, user_id)
+                            st.rerun()
+                        else:
+                            st.session_state[f"confirm_delete_{task.id}"] = True
+                            st.warning("Click again to confirm deletion")
+
+def display_task_editor(session, user_id):
+    """Comprehensive task editor with all parameters"""
+    editing_task_id = st.session_state.get("editing_task_id")
+    creating_new = st.session_state.get("creating_new_task", False)
+    
+    if editing_task_id:
+        task = session.query(UserBaseTaskDB).filter_by(id=editing_task_id, user_id=user_id).first()
+        is_new = False
+        title = "✏️ Edit Task"
+        if not task:
+            st.error("Task not found")
+            return
+    else:
+        task = None
+        is_new = True
+        title = "➕ Create New Task"
+    
+    st.subheader(title)
+    
+    with st.form(f"task_editor_{user_id}"):
+        # Basic Information Section
+        st.markdown("### 📋 Basic Information")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            task_name = st.text_input(
+                "Task Name *", 
+                value=task.name if task else "",
+                placeholder="e.g., Concrete Foundation Work",
+                help="Descriptive name for the construction task"
+            )
+        with col2:
+            discipline = st.selectbox(
+                "Discipline *", 
+                disciplines,
+                index=disciplines.index(task.discipline) if task and task.discipline in disciplines else 0
+            )
+        with col3:
+            resource_type = st.selectbox(
+                "Resource Type *", 
+                ["worker", "equipment", "hybrid"],
+                index=["worker", "equipment", "hybrid"].index(task.resource_type) 
+                if task and task.resource_type in ["worker", "equipment", "hybrid"] else 0
+            )
+        
+        # Duration & Resource Requirements
+        st.markdown("### ⏱️ Duration & Resources")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            base_duration = st.number_input(
+                "Base Duration (days) *",
+                min_value=0.1, max_value=365.0, step=0.5,
+                value=float(task.base_duration) if task and task.base_duration else 1.0,
+                help="Estimated duration in working days"
+            )
+        with col2:
+            min_crews_needed = st.number_input(
+                "Minimum Crews *",
+                min_value=1, max_value=50, step=1,
+                value=task.min_crews_needed if task and task.min_crews_needed else 1,
+                help="Number of crew teams required"
+            )
+        with col3:
+            delay = st.number_input(
+                "Delay (days)",
+                min_value=0, max_value=30, step=1,
+                value=task.delay if task and task.delay else 0,
+                help="Mandatory delay after predecessor completion"
+            )
+        
+        # Equipment Requirements
+        st.markdown("### 🚜 Equipment Requirements")
+        equipment_options = ["None", "Crane", "Excavator", "Concrete Pump", "Bulldozer", "Other"]
+        selected_equipment = st.multiselect(
+            "Required Equipment",
+            equipment_options,
+            default=[],
+            help="Select equipment needed for this task"
+        )
+        
+        # Convert to your equipment format
+        min_equipment_needed = {eq: 1 for eq in selected_equipment if eq != "None"}
+        
+        # Task Dependencies
+        st.markdown("### ⏩ Task Dependencies")
+        available_tasks = session.query(UserBaseTaskDB).filter(
+            UserBaseTaskDB.user_id == user_id,
+            UserBaseTaskDB.id != (task.id if task else None)
+        ).all()
+        
+        predecessor_options = [f"{t.name} ({t.discipline})" for t in available_tasks]
+        selected_predecessors = st.multiselect(
+            "Predecessor Tasks",
+            predecessor_options,
+            default=[],
+            help="Tasks that must complete before this one starts"
+        )
+        
+        # Convert back to task IDs for storage
+        predecessor_ids = []
+        for pred_name in selected_predecessors:
+            for t in available_tasks:
+                if f"{t.name} ({t.discipline})" == pred_name:
+                    predecessor_ids.append(t.id)
+                    break
+        
+        # Cross-Floor Configuration
+        st.markdown("### 🏢 Cross-Floor Configuration")
+        cross_floor_config = cross_floor_dependency_ui(task) if task else {}
+        
+        # Advanced Settings
+        with st.expander("⚙️ Advanced Settings"):
+            col1, col2 = st.columns(2)
+            with col1:
+                task_type = st.selectbox(
+                    "Task Type",
+                    ["worker", "equipment", "hybrid"],
+                    index=["worker", "equipment", "hybrid"].index(task.task_type) 
+                    if task and task.task_type else 0
+                )
+            with col2:
+                repeat_on_floor = st.checkbox(
+                    "Repeat on each floor",
+                    value=task.repeat_on_floor if task else True
+                )
+        
+        # Form Actions
+        st.markdown("---")
+        col1, col2, col3 = st.columns([1, 1, 2])
+        with col1:
+            if st.form_submit_button("💾 Save Task", use_container_width=True):
+                if not task_name:
+                    st.error("Task name is required")
+                else:
+                    save_enhanced_task(
+                        session, task, is_new, user_id, task_name, discipline, 
+                        resource_type, base_duration, min_crews_needed, delay,
+                        min_equipment_needed, predecessor_ids, cross_floor_config,
+                        task_type, repeat_on_floor
+                    )
+        with col2:
+            if st.form_submit_button("❌ Cancel", use_container_width=True):
+                st.session_state.pop("editing_task_id", None)
+                st.session_state.pop("creating_new_task", None)
+                st.rerun()
+        with col3:
+            if task and st.form_submit_button("📋 Save as Copy", use_container_width=True):
+                duplicate_task(task, user_id, modifications={
+                    'name': f"{task_name} (Copy)",
+                    'base_duration': base_duration,
+                    'min_crews_needed': min_crews_needed
+                })
+
+def load_user_tasks(session, user_id, search_term="", discipline_filter=None):
+    """Load tasks with filtering"""
+    query = session.query(UserBaseTaskDB).filter(UserBaseTaskDB.user_id == user_id)
+    
+    # Apply filters
+    if search_term:
+        query = query.filter(UserBaseTaskDB.name.ilike(f"%{search_term}%"))
+    
+    if discipline_filter:
+        query = query.filter(UserBaseTaskDB.discipline.in_(discipline_filter))
+    
+    return query.order_by(UserBaseTaskDB.discipline, UserBaseTaskDB.name).all()
