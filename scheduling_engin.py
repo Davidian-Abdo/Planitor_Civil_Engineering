@@ -1,243 +1,338 @@
 import pandas as pd
 import tempfile
-import os, time, shutil
-import datetime 
+import os
+import time
+import shutil
+import datetime
 from datetime import timedelta
 from dataclasses import dataclass, field
 from collections import defaultdict, deque
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Set, Any
 import bisect
 import math
 import warnings
 import logging
-import loguru
-import streamlit as st
-import plotly.express as px
 from io import BytesIO
 
-# ✅ ADD MISSING IMPORTS
+# Streamlit for UI components
+import streamlit as st
+import plotly.express as px
+
+# Database imports
 from backend.database import SessionLocal
 from backend.db_models import UserBaseTaskDB
 
+# Model imports
 from models import Task, BaseTask, WorkerResource, EquipmentResource
 from defaults import workers, equipment, BASE_TASKS, cross_floor_links, acceleration, SHIFT_CONFIG, disciplines
 
+# Helper imports
 from helpers import (
     ResourceAllocationList, AdvancedResourceManager, EquipmentResourceManager,
     Topo_order_tasks, generate_tasks, validate_tasks
 )
 
+# Configure logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
-    format="%(levelname)s: %(message)s"
+    format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
 )
-ground_disciplines = ["Préliminaire", "Terrassement", "Fondations"]
 
-# ----------------------------
-# Calendar (workdays) - half-open end
-# ----------------------------
+# Constants
+GROUND_DISCIPLINES = ["Préliminaire", "Terrassement", "Fondations"]
+MAX_SCHEDULING_ATTEMPTS = 10000
+MAX_FORWARD_ATTEMPTS = 3000
+
+
 class AdvancedCalendar:
-    def __init__(self, start_date, holidays=None, workweek=None):
+    """
+    Enhanced calendar system for construction scheduling with workday calculations
+    and holiday support.
+    """
+    
+    def __init__(self, start_date: pd.Timestamp, holidays: Optional[List] = None, 
+                 workweek: Optional[List[int]] = None):
+        """
+        Initialize calendar with start date, holidays, and workweek configuration.
+        
+        Args:
+            start_date: Project start date
+            holidays: List of holiday dates
+            workweek: List of workday numbers (0=Monday to 6=Sunday)
+        """
         self.current_date = pd.to_datetime(start_date)
         self.holidays = set(pd.to_datetime(h) for h in (holidays or []))
-        # workweek: 0=Monday .. 6=Sunday
-        self.workweek = workweek or [0, 1, 2, 3, 4]
+        self.workweek = workweek or [0, 1, 2, 3, 4]  # Monday to Friday by default
 
-    def is_workday(self, date):
-        # date is a Timestamp or datetime
-        d = pd.to_datetime(date)
-        return d.weekday() in self.workweek and d.normalize() not in self.holidays
-
-    def add_workdays(self, start_date, duration):
+    def is_workday(self, date: pd.Timestamp) -> bool:
         """
-        Returns an exclusive end date (the day after the last workday).
-        Example: duration=1 -> returns start_date + 1 workday (end exclusive)
+        Check if a date is a workday (not holiday and in workweek).
+        
+        Args:
+            date: Date to check
+            
+        Returns:
+            bool: True if workday, False otherwise
+        """
+        date_normalized = pd.to_datetime(date).normalize()
+        return (date_normalized.weekday() in self.workweek and 
+                date_normalized not in self.holidays)
+
+    def add_workdays(self, start_date: pd.Timestamp, duration: int) -> pd.Timestamp:
+        """
+        Calculate end date by adding workdays (exclusive end).
+        
+        Args:
+            start_date: Starting date
+            duration: Number of workdays to add
+            
+        Returns:
+            pd.Timestamp: Exclusive end date
         """
         if duration <= 0:
             return pd.to_datetime(start_date)
-        days = 0
-        current = pd.to_datetime(start_date)
+            
+        days_counted = 0
+        current_date = pd.to_datetime(start_date)
         last_workday = None
-        while days < duration:
-            if self.is_workday(current):
-                days += 1
-                last_workday = current
-            current = current + timedelta(days=1)
-        # return the day after the last workday (exclusive end)
+        
+        while days_counted < duration:
+            if self.is_workday(current_date):
+                days_counted += 1
+                last_workday = current_date
+            current_date += timedelta(days=1)
+            
+        # Return exclusive end date (day after last workday)
         return pd.to_datetime(last_workday) + pd.Timedelta(days=1)
     
-    def add_calendar_days(self, start_date, days):
-        """Add calendar days (includes weekends/holidays) - for DELAYS"""
-        """Returns exclusive end date"""
+    def add_calendar_days(self, start_date: pd.Timestamp, days: int) -> pd.Timestamp:
+        """
+        Add calendar days (includes weekends/holidays) for delays.
+        
+        Args:
+            start_date: Starting date
+            days: Number of calendar days to add
+            
+        Returns:
+            pd.Timestamp: Exclusive end date
+        """
         if days <= 0:
             return pd.to_datetime(start_date)
-        result = pd.to_datetime(start_date) + pd.Timedelta(days=days)
-        return result
+        return pd.to_datetime(start_date) + pd.Timedelta(days=days)
 
-# -----------------------------
-# Duration Calculator (uses separate pools)
-# -----------------------------
+
 class DurationCalculator:
-    def __init__(self, workers: Dict[str, WorkerResource], equipment: Dict[str, EquipmentResource], quantity_matrix: Dict):
+    """
+    Calculate task durations based on resources, quantities, and productivity rates.
+    """
+    
+    def __init__(self, workers: Dict[str, WorkerResource], 
+                 equipment: Dict[str, EquipmentResource], 
+                 quantity_matrix: Dict):
         self.workers = workers
         self.equipment = equipment
         self.quantity_matrix = quantity_matrix
         self.acceleration = acceleration
 
-    def _get_quantity(self, task: Task):
-        """Get quantity for task from quantity matrix with fallback handling"""
-        base_q = self.quantity_matrix.get(str(task.base_id), {})
-        floor_q = base_q.get(task.floor, {})
-    
-        if not floor_q:  # Check if floor_q is empty dict or None
-            logger.warning(f"⚠️ Floor {task.floor} for task {task.base_id} not found in quantity_matrix")
-            qty = getattr(task, 'quantity', 1)  # Fallback
-        else:
-            qty = floor_q.get(task.zone, getattr(task, 'quantity', 1))
-    
-        if qty is None or qty <= 0:
-            logger.warning(f"⚠️ Invalid quantity {qty} for task {task.base_id}, defaulting to 1")
-            qty = 1
-    
-        logger.info(f"✅ Task {task.base_id}, floor {task.floor} quantity: {qty}")
-        task.quantity = qty
-        return qty
-
-    def _get_productivity_rate(self, resource, task_id, default=1.0):
-        """Get task-specific productivity rate from resource."""
-        if hasattr(resource, 'productivity_rates'):
-            if isinstance(resource.productivity_rates, dict):
-                return resource.productivity_rates.get(task_id, default)
+    def _get_quantity(self, task: Task) -> float:
+        """
+        Get quantity for task from quantity matrix with comprehensive fallback handling.
+        
+        Args:
+            task: Task to get quantity for
+            
+        Returns:
+            float: Task quantity
+        """
+        try:
+            base_q = self.quantity_matrix.get(str(task.base_id), {})
+            floor_q = base_q.get(task.floor, {})
+            
+            if not floor_q:
+                logger.warning(f"⚠️ Floor {task.floor} for task {task.base_id} not found in quantity_matrix")
+                qty = getattr(task, 'quantity', 1.0)
             else:
-                return resource.productivity_rates
-        return default
+                qty = floor_q.get(task.zone, getattr(task, 'quantity', 1.0))
+            
+            # Validate quantity
+            if qty is None or qty <= 0:
+                logger.warning(f"⚠️ Invalid quantity {qty} for task {task.base_id}, defaulting to 1")
+                qty = 1.0
+            
+            logger.debug(f"✅ Task {task.base_id}, floor {task.floor} quantity: {qty}")
+            task.quantity = qty
+            return float(qty)
+            
+        except Exception as e:
+            logger.error(f"❌ Error getting quantity for task {task.base_id}: {e}")
+            return 1.0
 
-    def _get_first_equipment_type(self, min_equipment_needed):
-        """Get the first equipment type from min_equipment_needed dictionary."""
+    def _get_productivity_rate(self, resource, task_id: str, default: float = 1.0) -> float:
+        """
+        Get task-specific productivity rate from resource.
+        
+        Args:
+            resource: Worker or equipment resource
+            task_id: Task identifier
+            default: Default productivity rate
+            
+        Returns:
+            float: Productivity rate
+        """
+        try:
+            if hasattr(resource, 'productivity_rates'):
+                if isinstance(resource.productivity_rates, dict):
+                    return resource.productivity_rates.get(task_id, default)
+                return resource.productivity_rates
+            return default
+        except Exception:
+            return default
+
+    def _get_first_equipment_type(self, min_equipment_needed: Dict) -> Optional[str]:
+        """
+        Get the first equipment type from min_equipment_needed dictionary.
+        
+        Args:
+            min_equipment_needed: Dictionary of equipment requirements
+            
+        Returns:
+            Optional[str]: First equipment type
+        """
         if not min_equipment_needed:
             return None
         
-        # Get the first key-value pair from the dictionary
         first_key = next(iter(min_equipment_needed))
         
-        # If it's a tuple/list (alternative equipment), take the first one
         if isinstance(first_key, (tuple, list)):
             return first_key[0] if first_key else None
-        else:
-            return first_key
+        return first_key
 
-    def calculate_duration(self, task: Task, allocated_crews: int = None, allocated_equipments: dict = None) -> int:
+    def _calculate_worker_duration(self, task: Task, crews: int, qty: float) -> float:
+        """Calculate duration for worker-only tasks."""
+        if task.resource_type not in self.workers:
+            raise ValueError(f"Worker resource '{task.resource_type}' not found for task {task.id}")
+        
+        resource = self.workers[task.resource_type]
+        base_prod = self._get_productivity_rate(resource, task.base_id, 1.0)
+        daily_prod = base_prod * crews
+        
+        if daily_prod <= 0:
+            raise ValueError(f"Non-positive worker productivity for {task.id}")
+            
+        return qty / daily_prod
+
+    def _calculate_equipment_duration(self, task: Task, eq_alloc: Dict, qty: float) -> float:
+        """Calculate duration for equipment-only tasks."""
+        if not eq_alloc:
+            raise ValueError(f"Equipment task {task.id} has no equipment specified")
+        
+        first_eq_type = self._get_first_equipment_type(task.min_equipment_needed)
+        if not first_eq_type:
+            raise ValueError(f"No equipment types found for task {task.id}")
+        
+        # Calculate total units for first equipment type
+        total_units = 0
+        if isinstance(first_eq_type, (tuple, list)):
+            for eq_name in first_eq_type:
+                total_units += eq_alloc.get(eq_name, 0)
+        else:
+            total_units = eq_alloc.get(first_eq_type, 0)
+        
+        if first_eq_type not in self.equipment:
+            raise ValueError(f"Equipment '{first_eq_type}' not found for task {task.id}")
+        
+        resource = self.equipment[first_eq_type]
+        base_prod = self._get_productivity_rate(resource, task.base_id, 1.0)
+        daily_prod_total = base_prod * total_units
+        
+        if daily_prod_total <= 0:
+            raise ValueError(f"Non-positive equipment productivity for {task.id}")
+            
+        return qty / daily_prod_total
+
+    def _calculate_hybrid_duration(self, task: Task, crews: int, eq_alloc: Dict, qty: float) -> float:
+        """Calculate duration for hybrid tasks (both workers and equipment)."""
+        # Worker calculation
+        if task.resource_type not in self.workers:
+            raise ValueError(f"Worker resource '{task.resource_type}' not found for task {task.id}")
+            
+        worker_res = self.workers[task.resource_type]
+        base_prod_worker = self._get_productivity_rate(worker_res, task.base_id, 1.0)
+        daily_worker_prod = base_prod_worker * crews
+        
+        if daily_worker_prod <= 0:
+            raise ValueError(f"Non-positive worker productivity for {task.id}")
+
+        # Equipment calculation
+        daily_equip_prod = 0
+        if eq_alloc:
+            first_eq_type = self._get_first_equipment_type(task.min_equipment_needed)
+            if first_eq_type and first_eq_type in self.equipment:
+                total_units = 0
+                if isinstance(first_eq_type, (tuple, list)):
+                    for eq_name in first_eq_type:
+                        total_units += eq_alloc.get(eq_name, 0)
+                else:
+                    total_units = eq_alloc.get(first_eq_type, 0)
+                
+                eq_res = self.equipment[first_eq_type]
+                base_prod_eq = self._get_productivity_rate(eq_res, task.base_id, 1.0)
+                daily_equip_prod = base_prod_eq * total_units * getattr(eq_res, 'efficiency', 1.0)
+        
+        # Use bottleneck (longer duration)
+        duration_worker = qty / daily_worker_prod if daily_worker_prod > 0 else float('inf')
+        duration_equip = qty / daily_equip_prod if daily_equip_prod > 0 else float('inf')
+        
+        return max(duration_worker, duration_equip)
+
+    def calculate_duration(self, task: Task, allocated_crews: int = None, 
+                          allocated_equipments: dict = None) -> int:
         """
-        Calculate workdays using the actual allocated resources.
+        Calculate workdays using actual allocated resources.
+        
+        Args:
+            task: Task to calculate duration for
+            allocated_crews: Number of crews allocated
+            allocated_equipments: Equipment allocations
+            
+        Returns:
+            int: Duration in workdays (rounded up)
         """
-        # If task has fixed base duration, return it
+        # Return fixed duration if specified
         if getattr(task, "base_duration", None) is not None:
             return int(math.ceil(task.base_duration))
             
+        # Get quantity and normalize allocations
         qty = self._get_quantity(task)
-
-        # Normalize allocated items
         crews = allocated_crews if allocated_crews is not None else max(1, task.min_crews_needed)
         eq_alloc = allocated_equipments if allocated_equipments is not None else (task.min_equipment_needed or {})
 
+        # Calculate base duration based on task type
         if task.task_type == "worker":
-            if task.resource_type not in self.workers:
-                raise ValueError(f"Worker resource '{task.resource_type}' not found for task {task.id}")
-            
-            res = self.workers[task.resource_type]
-            base_prod = self._get_productivity_rate(res, task.base_id, 1.0)
-            daily_prod = base_prod * crews 
-            
-            if daily_prod <= 0:
-                raise ValueError(f"Non-positive worker productivity for {task.id}")
-                
-            duration = qty / daily_prod
-
+            duration = self._calculate_worker_duration(task, crews, qty)
         elif task.task_type == "equipment":
-            if not eq_alloc:
-                raise ValueError(f"Equipment task {task.id} has no equipment specified")
-            
-            # Use only the first equipment type for productivity calculation
-            first_eq_type = self._get_first_equipment_type(task.min_equipment_needed)
-            if not first_eq_type:
-                raise ValueError(f"No equipment types found in min_equipment_needed for task {task.id}")
-            
-            # Get total units allocated for the first equipment type (including alternatives)
-            total_units = 0
-            if isinstance(first_eq_type, (tuple, list)):
-                # If first equipment type is a tuple of alternatives, sum all allocated alternatives
-                for eq_name in first_eq_type:
-                    total_units += eq_alloc.get(eq_name, 0)
-            else:
-                # Single equipment type
-                total_units = eq_alloc.get(first_eq_type, 0)
-            
-            if first_eq_type not in self.equipment:
-                raise ValueError(f"First equipment type '{first_eq_type}' not found for task {task.id}")
-            
-            res = self.equipment[first_eq_type]
-            base_prod = self._get_productivity_rate(res, task.base_id, 1.0)
-            daily_prod_total = base_prod * total_units 
-            
-            if daily_prod_total <= 0:
-                raise ValueError(f"Non-positive equipment productivity for {task.id}")
-                
-            duration = qty / daily_prod_total
-
+            duration = self._calculate_equipment_duration(task, eq_alloc, qty)
         elif task.task_type == "hybrid":
-            # Worker-limited calculation
-            if task.resource_type not in self.workers:
-                raise ValueError(f"Worker resource '{task.resource_type}' not found for task {task.id}")
-                
-            worker_res = self.workers[task.resource_type]
-            base_prod_worker = self._get_productivity_rate(worker_res, task.base_id, 1.0)
-            daily_worker_prod = base_prod_worker * crews 
-            
-            if daily_worker_prod <= 0:
-                raise ValueError(f"Non-positive worker productivity for {task.id}")
-
-            # Equipment-limited calculation using only first equipment type
-            daily_equip_prod = 0
-            if eq_alloc:
-                first_eq_type = self._get_first_equipment_type(task.min_equipment_needed)
-                if first_eq_type and first_eq_type in self.equipment:
-                    total_units = 0
-                    if isinstance(first_eq_type, (tuple, list)):
-                        for eq_name in first_eq_type:
-                            total_units += eq_alloc.get(eq_name, 0)
-                    else:
-                        total_units = eq_alloc.get(first_eq_type, 0)
-                    
-                    eq_res = self.equipment[first_eq_type]
-                    base_prod_eq = self._get_productivity_rate(eq_res, task.base_id, 1.0)
-                    daily_equip_prod = base_prod_eq * total_units * getattr(eq_res, 'efficiency', 1.0)
-            
-            # Calculate both durations and use the bottleneck
-            duration_worker = qty / daily_worker_prod if daily_worker_prod > 0 else float('inf')
-            duration_equip = qty / daily_equip_prod if daily_equip_prod > 0 else float('inf')
-            
-            # Use the longer duration (bottleneck)
-            duration = max(duration_worker, duration_equip)
-
+            duration = self._calculate_hybrid_duration(task, crews, eq_alloc, qty)
         else:
             raise ValueError(f"Unknown task_type: {task.task_type}")
 
-        # Apply shift factors and floor acceleration
+        # Apply shift factors and optimization
         shift_factor = SHIFT_CONFIG.get(task.discipline, SHIFT_CONFIG.get("default", 1.0))
         duration = duration / shift_factor
         
-        # Apply floor acceleration (higher floors may be faster due to experience)
+        # Apply floor acceleration (experience factor)
         if task.floor > 1:
             duration *= 0.98 ** (task.floor - 1)
 
-        # Validate & clamp duration
+        # Validate and finalize duration
         if not isinstance(duration, (int, float)) or math.isnan(duration) or math.isinf(duration):
             raise ValueError(f"Invalid duration for task {task.id}: {duration!r}")
 
         duration = float(duration)
-        if duration <= 1:
-            logger.warning(f"Computed non-positive duration for task {task.id}. Setting to 1 day.")
+        if duration <= 0:
+            logger.warning(f"Non-positive duration for task {task.id}. Setting to 1 day.")
             duration = 1.0
 
         duration_days = int(math.ceil(duration))
@@ -245,131 +340,167 @@ class DurationCalculator:
         
         return max(1, duration_days)
 
-# -----------------------------
-# CPM Analyzer (day counts)
-# -----------------------------
+
 class CPMAnalyzer:
+    """
+    Critical Path Method analyzer for project scheduling.
+    """
+    
     def __init__(self, tasks, durations=None, dependencies=None):
         """
-        Flexible CPM analyzer.
+        Initialize CPM analyzer with tasks and dependencies.
+        
+        Args:
+            tasks: List of tasks or task IDs
+            durations: Dictionary of task durations (if tasks are IDs)
+            dependencies: Dictionary of task dependencies (if tasks are IDs)
         """
-        # Case A: list of Task objects
+        # Case A: List of Task objects
         if durations is None and dependencies is None and tasks and hasattr(tasks[0], "id"):
             self.tasks = tasks
             self.task_by_id = {t.id: t for t in tasks}
             self.durations = {t.id: t.base_duration for t in tasks}
             self.dependencies = {t.id: t.predecessors for t in tasks}
-
-        # Case B: raw IDs + dicts
+        # Case B: Raw IDs with dictionaries
         else:
-            self.tasks = tasks  # here it's a list of IDs
-            self.task_by_id = {tid: None for tid in tasks}  # no real Task objects
+            self.tasks = tasks
+            self.task_by_id = {tid: None for tid in tasks}
             self.durations = durations
             self.dependencies = dependencies
 
-        # Graph data structures
-        self.adj = defaultdict(list)      # successors
-        self.rev_adj = defaultdict(list)  # predecessors
-        self.indeg = defaultdict(int)
-        self.outdeg = defaultdict(int)
+        # Graph structures
+        self.adj = defaultdict(list)      # Successors
+        self.rev_adj = defaultdict(list)  # Predecessors  
+        self.indeg = defaultdict(int)     # In-degree
+        self.outdeg = defaultdict(int)    # Out-degree
 
         # CPM results
-        self.ES, self.EF = {}, {}
-        self.LS, self.LF = {}, {}
-        self.float = {}
+        self.ES, self.EF = {}, {}  # Earliest Start/Finish
+        self.LS, self.LF = {}, {}  # Latest Start/Finish  
+        self.float = {}            # Float/Slack
         self.project_duration = 0
 
     def build_graph(self):
-        """Build adjacency and degree maps."""
+        """Build task dependency graph."""
         for tid in self.tasks:
             preds = self.dependencies.get(tid, [])
-            for p in preds:
-                self.adj[p].append(tid)
-                self.rev_adj[tid].append(p)
+            for pred in preds:
+                self.adj[pred].append(tid)
+                self.rev_adj[tid].append(pred)
                 self.indeg[tid] += 1
-                self.outdeg[p] += 1
+                self.outdeg[pred] += 1
 
     def forward_pass(self):
-        """Compute earliest start/finish (ES/EF)."""
-        q = deque([tid for tid in self.tasks if self.indeg[tid] == 0])
-        while q:
-            u = q.popleft()
-            preds = self.dependencies.get(u, [])
-            self.ES[u] = max((self.EF[p] for p in preds), default=0)
-            self.EF[u] = self.ES[u] + self.durations[u]
-            for v in self.adj[u]:
-                self.indeg[v] -= 1
-                if self.indeg[v] == 0:
-                    q.append(v)
-        self.project_duration = max(self.EF.values())
+        """Compute earliest start and finish times."""
+        queue = deque([tid for tid in self.tasks if self.indeg[tid] == 0])
+        
+        while queue:
+            current = queue.popleft()
+            preds = self.dependencies.get(current, [])
+            
+            # Earliest start is max of predecessor finishes
+            self.ES[current] = max((self.EF[p] for p in preds), default=0)
+            self.EF[current] = self.ES[current] + self.durations[current]
+            
+            # Update successors
+            for successor in self.adj[current]:
+                self.indeg[successor] -= 1
+                if self.indeg[successor] == 0:
+                    queue.append(successor)
+                    
+        self.project_duration = max(self.EF.values()) if self.EF else 0
 
     def backward_pass(self):
-        """Compute latest start/finish (LS/LF)."""
-        q = deque([tid for tid in self.tasks if self.outdeg[tid] == 0])
-        for tid in q:
+        """Compute latest start and finish times."""
+        if not self.EF:
+            raise ValueError("Must run forward pass before backward pass")
+            
+        queue = deque([tid for tid in self.tasks if self.outdeg[tid] == 0])
+        
+        for tid in queue:
             self.LF[tid] = self.project_duration
             self.LS[tid] = self.LF[tid] - self.durations[tid]
 
-        while q:
-            u = q.popleft()
-            for p in self.rev_adj[u]:
-                if p not in self.LF:
-                    self.LF[p] = self.LS[u]
+        while queue:
+            current = queue.popleft()
+            for predecessor in self.rev_adj[current]:
+                if predecessor not in self.LF:
+                    self.LF[predecessor] = self.LS[current]
                 else:
-                    self.LF[p] = min(self.LF[p], self.LS[u])
-                self.LS[p] = self.LF[p] - self.durations[p]
-                self.outdeg[p] -= 1
-                if self.outdeg[p] == 0:
-                    q.append(p)
+                    self.LF[predecessor] = min(self.LF[predecessor], self.LS[current])
+                    
+                self.LS[predecessor] = self.LF[predecessor] - self.durations[predecessor]
+                self.outdeg[predecessor] -= 1
+                
+                if self.outdeg[predecessor] == 0:
+                    queue.append(predecessor)
 
-    def analyze(self):
-        """Run full CPM analysis and calculate floats."""
-        self.build_graph()
-        self.forward_pass()
-        self.backward_pass()
-
+    def calculate_float(self):
+        """Calculate float/slack for all tasks."""
         for tid in self.tasks:
             self.float[tid] = self.LS[tid] - self.ES[tid]
 
+    def analyze(self):
+        """Run full CPM analysis."""
+        self.build_graph()
+        self.forward_pass()
+        self.backward_pass()
+        self.calculate_float()
         return self.project_duration
 
-    def get_critical_tasks(self):
-        """Return list of critical task IDs (slack == 0)."""
+    def get_critical_tasks(self) -> List[str]:
+        """Get list of critical task IDs (zero float)."""
         return [tid for tid in self.tasks if self.float.get(tid, 0) == 0]
 
-    def get_critical_chains(self):
-        """Return possible critical paths (chains)."""
+    def get_critical_paths(self) -> List[List[str]]:
+        """Find all critical paths in the project."""
         critical_paths = []
 
-        def dfs(path):
-            last = path[-1]
+        def depth_first_search(path: List[str]):
+            """Recursive DFS to find critical paths."""
+            last_task = path[-1]
             extended = False
-            for succ in self.adj[last]:
-                if self.float.get(succ, 0) == 0:
-                    dfs(path + [succ])
+            
+            for successor in self.adj[last_task]:
+                if self.float.get(successor, 0) == 0:
+                    depth_first_search(path + [successor])
                     extended = True
+                    
             if not extended:
                 critical_paths.append(path)
 
+        # Start from tasks with no predecessors that are critical
         for tid in self.tasks:
             if not self.dependencies.get(tid) and self.float.get(tid, 0) == 0:
-                dfs([tid])
+                depth_first_search([tid])
 
         return critical_paths
 
     def run(self):
+        """Convenience method to run full analysis."""
         self.analyze()
         return self
 
-# -----------------------------
-# Advanced Scheduler
-# -----------------------------
+
 class AdvancedScheduler:
-    def __init__(self, tasks: List[Task], workers: Dict[str, WorkerResource], equipment: Dict[str, EquipmentResource],
-                 calendar: AdvancedCalendar, duration_calc: DurationCalculator):
-        # tasks should already be Task objects; we keep only included ones
+    """
+    Advanced construction scheduler with resource constraints and optimization.
+    """
+    
+    def __init__(self, tasks: List[Task], workers: Dict[str, WorkerResource],
+                 equipment: Dict[str, EquipmentResource], calendar: AdvancedCalendar,
+                 duration_calc: DurationCalculator):
+        """
+        Initialize scheduler with tasks and resources.
+        
+        Args:
+            tasks: List of tasks to schedule
+            workers: Worker resources
+            equipment: Equipment resources  
+            calendar: Calendar for date calculations
+            duration_calc: Duration calculator
+        """
         self.tasks = [t for t in tasks if getattr(t, "included", True)]
-        # map by id for quick lookup
         self.task_map = {t.id: t for t in self.tasks}
         self.workers = workers
         self.equipment = equipment
@@ -378,18 +509,17 @@ class AdvancedScheduler:
         self.worker_manager = AdvancedResourceManager(workers)
         self.equipment_manager = EquipmentResourceManager(equipment)
 
-    def _all_predecessors_scheduled(self, task, schedule):
-        """Return True if all predecessors (that should be considered) are in schedule."""
-        for p in task.predecessors:
-            # If predecessor doesn't exist in our task_map, it's an error in generation
-            if p not in self.task_map:
-                raise ValueError(f"Task {task.id} has a predecessor {p} that is not part of the task set.")
-            if p not in schedule:
+    def _all_predecessors_scheduled(self, task: Task, schedule: Dict) -> bool:
+        """Check if all predecessors are scheduled."""
+        for predecessor in task.predecessors:
+            if predecessor not in self.task_map:
+                raise ValueError(f"Task {task.id} has predecessor {predecessor} not in task set")
+            if predecessor not in schedule:
                 return False
         return True
 
-    def _earliest_start_from_preds(self, task, schedule):
-        """Compute earliest possible start (exclusive end of predecessors)."""
+    def _earliest_start_from_predecessors(self, task: Task, schedule: Dict) -> pd.Timestamp:
+        """Calculate earliest start date based on predecessors."""
         pred_end_dates = [
             self.calendar.add_calendar_days(schedule[p][1], self.task_map[p].delay)
             for p in task.predecessors
@@ -402,16 +532,17 @@ class AdvancedScheduler:
             
         return max(pred_end_dates)
 
-    def _allocate_resources_for_window(self, task, start_date, duration_days):
+    def _allocate_resources_for_window(self, task: Task, start_date: pd.Timestamp, 
+                                     duration_days: int) -> Tuple[Optional[int], Dict, pd.Timestamp]:
         """
-        FIXED: Helper method to allocate resources for a specific time window.
-        Resources are NOT released here - only when we commit allocations.
+        Allocate resources for a specific time window without committing.
+        
+        Returns:
+            Tuple of (crews, equipment, end_date)
         """
         end_date = self.calendar.add_workdays(start_date, duration_days)
         
-        # ✅ FIXED: Do NOT release resources here - this was causing the bug
-        
-        # Compute allocations
+        # Calculate possible allocations
         possible_crews = None
         if task.task_type in ("worker", "hybrid"):
             possible_crews = self.worker_manager.compute_allocation(task, start_date, end_date)
@@ -422,14 +553,17 @@ class AdvancedScheduler:
 
         return possible_crews, possible_equip, end_date
 
-    def _check_feasibility(self, task, possible_crews, possible_equip):
+    def _check_feasibility(self, task: Task, possible_crews: Optional[int], 
+                          possible_equip: Dict) -> Tuple[bool, bool]:
         """Check if allocated resources meet minimum requirements."""
         min_crews = getattr(task, "min_crews_needed", max(1, task.min_crews_needed))
         
+        # Check worker feasibility
         feasible_workers = True
         if task.task_type in ("worker", "hybrid"):
             feasible_workers = (possible_crews is not None and possible_crews >= min_crews)
 
+        # Check equipment feasibility
         feasible_equip = True
         if task.task_type in ("equipment", "hybrid") and (task.min_equipment_needed or {}):
             for eq_key, min_req in task.min_equipment_needed.items():
@@ -441,187 +575,228 @@ class AdvancedScheduler:
 
         return feasible_workers, feasible_equip
 
-    def generate(self):
-        """Generate optimized schedule with resource constraints."""
+    def _schedule_instantaneous_task(self, task: Task, schedule: Dict, ready: deque, 
+                                   pred_count: Dict, unscheduled: Set):
+        """Schedule a task with zero duration."""
+        start_date = self._earliest_start_from_predecessors(task, schedule)
+        schedule[task.id] = (start_date, start_date)
+        unscheduled.remove(task.id)
+        task.allocated_crews = 0
+        task.allocated_equipments = {}
+        
+        # Update successors
+        for successor in [s for s in self.task_map if task.id in self.task_map[s].predecessors]:
+            pred_count[successor] -= 1
+            if pred_count[successor] == 0:
+                ready.append(successor)
+
+    def _allocate_and_schedule_task(self, task: Task, start_date: pd.Timestamp, 
+                                  schedule: Dict) -> Tuple[pd.Timestamp, pd.Timestamp, int, Dict]:
+        """
+        Allocate resources and schedule a task.
+        
+        Returns:
+            Tuple of (start_date, end_date, crews, equipment)
+        """
+        duration_days = self.duration_calc.calculate_duration(task)
+        
+        if not isinstance(duration_days, int) or duration_days < 0:
+            raise ValueError(f"Invalid duration for {task.id}: {duration_days}")
+
+        # Resource allocation loop
+        allocated_crews = None
+        allocated_equipments = None
+        forward_attempts = 0
+
+        while forward_attempts < MAX_FORWARD_ATTEMPTS:
+            # Get resource allocations
+            possible_crews, possible_equip, end_date = self._allocate_resources_for_window(
+                task, start_date, duration_days
+            )
+
+            # Check feasibility
+            feasible_workers, feasible_equip = self._check_feasibility(
+                task, possible_crews, possible_equip
+            )
+
+            if feasible_workers and feasible_equip:
+                # Calculate duration with actual allocations
+                actual_duration = self.duration_calc.calculate_duration(
+                    task,
+                    allocated_crews=possible_crews,
+                    allocated_equipments=possible_equip
+                )
+                
+                # Re-check with actual duration
+                final_crews, final_equip, final_end = self._allocate_resources_for_window(
+                    task, start_date, actual_duration
+                )
+                
+                final_feasible_workers, final_feasible_equip = self._check_feasibility(
+                    task, final_crews, final_equip
+                )
+                
+                if final_feasible_workers and final_feasible_equip:
+                    # Release previous allocations and commit new ones
+                    self.worker_manager.release(task.id)
+                    self.equipment_manager.release(task.id)
+                    
+                    allocated_crews = final_crews
+                    allocated_equipments = final_equip
+
+                    if allocated_crews:
+                        self.worker_manager.allocate(task, start_date, final_end, allocated_crews)
+                    if allocated_equipments:
+                        self.equipment_manager.allocate(task, start_date, final_end, allocated_equipments)
+
+                    duration_days = actual_duration
+                    end_date = final_end
+                    break
+
+            # Move to next workday
+            start_date = self.calendar.add_workdays(start_date, 1)
+            forward_attempts += 1
+
+        if forward_attempts >= MAX_FORWARD_ATTEMPTS:
+            raise RuntimeError(
+                f"Could not find resource window for task {task.id} ({task.name}) "
+                f"after {MAX_FORWARD_ATTEMPTS} attempts. Required: {task.min_crews_needed} crews, "
+                f"Equipment: {task.min_equipment_needed}"
+            )
+
+        return start_date, end_date, allocated_crews, allocated_equipments
+
+    def generate(self) -> Dict[str, Tuple[pd.Timestamp, pd.Timestamp]]:
+        """
+        Generate optimized schedule with resource constraints.
+        
+        Returns:
+            Dictionary mapping task IDs to (start_date, end_date) tuples
+        """
         schedule = {}
         unscheduled = set(self.task_map.keys())
 
-        # Predecessor counts for ready queue
+        # Initialize predecessor counts and ready queue
         pred_count = {tid: len(self.task_map[tid].predecessors) for tid in self.task_map}
-
-        # Start with zero-predecessor tasks
         ready = deque([tid for tid, cnt in pred_count.items() if cnt == 0])
 
-        # Validate references early
-        for tid, t in self.task_map.items():
-            for p in t.predecessors:
-                if p not in self.task_map:
-                    raise ValueError(f"Task {tid} references predecessor {p} which does not exist.")
-        
-        # Precompute durations (fail early)
-        for tid, t in self.task_map.items():
+        # Validate task references early
+        for tid, task in self.task_map.items():
+            for predecessor in task.predecessors:
+                if predecessor not in self.task_map:
+                    raise ValueError(f"Task {tid} references non-existent predecessor {predecessor}")
+
+        # Precompute nominal durations
+        for tid, task in self.task_map.items():
             try:
-                # compute a nominal duration using nominal resources (no allocations)
-                d = self.duration_calc.calculate_duration(t)
-                if not isinstance(d, int) or d < 0:
-                    raise ValueError(f"Computed invalid duration {d!r}")
+                nominal_duration = self.duration_calc.calculate_duration(task)
+                if not isinstance(nominal_duration, int) or nominal_duration < 0:
+                    raise ValueError(f"Invalid nominal duration {nominal_duration!r}")
+                task.nominal_duration = nominal_duration
             except Exception as e:
                 logger.error(f"Task {tid}: cannot compute nominal duration => {e!r}")
                 raise
-            # store precomputed nominal duration on task so scheduler can use it as a fallback
-            t.nominal_duration = d
 
-        max_attempts = len(self.task_map) * 10 + 1000
+        # Main scheduling loop
         attempts = 0
-
         while unscheduled:
             if not ready:
-                pending = ", ".join(sorted(unscheduled))
-                raise RuntimeError(f"No tasks are ready but unscheduled remain: {pending}")
+                pending_tasks = ", ".join(sorted(unscheduled))
+                raise RuntimeError(f"No tasks ready but unscheduled remain: {pending_tasks}")
 
             tid = ready.popleft()
             task = self.task_map[tid]
 
-            # All predecessors must be scheduled
+            # Check if all predecessors are scheduled
             if not self._all_predecessors_scheduled(task, schedule):
                 ready.append(tid)
                 attempts += 1
-                if attempts > max_attempts:
+                if attempts > MAX_SCHEDULING_ATTEMPTS:
                     raise RuntimeError("Scheduler stuck waiting for predecessors.")
                 continue
 
-            # Reset attempts counter when we successfully process a task
+            # Reset attempts counter on successful processing
             attempts = 0
             
-            # Earliest start after predecessors
-            start_date = self._earliest_start_from_preds(task, schedule)
+            # Get earliest start date
+            start_date = self._earliest_start_from_predecessors(task, schedule)
             task.earliest_start = start_date
 
-            # Initial duration guess (using nominal crews/equipment)
-            duration_days = self.duration_calc.calculate_duration(task)
-            if not isinstance(duration_days, int) or duration_days < 0:
-                raise ValueError(f"Invalid duration for {task.id}: {duration_days}")
-
-            # Handle instantaneous tasks (duration = 0)
-            if duration_days == 0:
-                schedule[task.id] = (start_date, start_date)
-                unscheduled.remove(task.id)
-                task.allocated_crews = 0
-                task.allocated_equipments = {}
-                
-                # Update successors
-                for succ in [s for s in self.task_map if task.id in self.task_map[s].predecessors]:
-                    pred_count[succ] -= 1
-                    if pred_count[succ] == 0:
-                        ready.append(succ)
+            # Handle instantaneous tasks
+            if task.nominal_duration == 0:
+                self._schedule_instantaneous_task(task, schedule, ready, pred_count, unscheduled)
                 continue
 
-            # Resource allocation loop
-            allocated_crews = None
-            allocated_equipments = None
-            forward_attempts = 0
-            max_forward = 3000
+            # Allocate resources and schedule task
+            start_date, end_date, crews, equipment = self._allocate_and_schedule_task(
+                task, start_date, schedule
+            )
 
-            while forward_attempts < max_forward:
-                # Get resource allocations for current window
-                possible_crews, possible_equip, end_date = self._allocate_resources_for_window(
-                    task, start_date, duration_days
-                )
-
-                # Check feasibility
-                feasible_workers, feasible_equip = self._check_feasibility(task, possible_crews, possible_equip)
-
-                # If feasible, calculate duration with actual allocations
-                if feasible_workers and feasible_equip:
-                    actual_duration = self.duration_calc.calculate_duration(
-                        task,
-                        allocated_crews=possible_crews,
-                        allocated_equipments=possible_equip
-                    )
-                    
-                    # Re-check allocations with actual duration
-                    final_crews, final_equip, final_end = self._allocate_resources_for_window(
-                        task, start_date, actual_duration
-                    )
-                    
-                    final_feasible_workers, final_feasible_equip = self._check_feasibility(task, final_crews, final_equip)
-                    
-                    if final_feasible_workers and final_feasible_equip:
-                        # ✅ FIXED: Only release previous allocations AFTER we have new ones confirmed
-                        self.worker_manager.release(task.id)
-                        self.equipment_manager.release(task.id)
-                        
-                        # Commit allocations
-                        allocated_crews = final_crews
-                        allocated_equipments = final_equip
-
-                        if allocated_crews:
-                            self.worker_manager.allocate(task, start_date, final_end, allocated_crews)
-                        if allocated_equipments:
-                            self.equipment_manager.allocate(task, start_date, final_end, allocated_equipments)
-
-                        duration_days = actual_duration
-                        end_date = final_end
-                        break
-
-                # Shift window forward
-                start_date = self.calendar.add_workdays(start_date, 1)
-                forward_attempts += 1
-
-            if forward_attempts >= max_forward:
-                raise RuntimeError(
-                    f"Could not find resource window for task {task.id} ({task.name}) " 
-                    f"after {max_forward} attempts. Required: {task.min_crews_needed} crews, "
-                    f"Equipment: {task.min_equipment_needed}"
-                )
-
-            # Final dependency enforcement
-            for p in task.predecessors:
-                pred_end = schedule[p][1]
+            # Final dependency validation
+            for predecessor in task.predecessors:
+                pred_end = schedule[predecessor][1]
                 if start_date < pred_end:
                     raise RuntimeError(
                         f"Dependency violation: Task {task.id} starts {start_date} "
-                        f"before predecessor {p} ends {pred_end}"
+                        f"before predecessor {predecessor} ends {pred_end}"
                     )
 
             # Record schedule
             schedule[task.id] = (start_date, end_date)
             unscheduled.remove(task.id)
-            task.allocated_crews = allocated_crews
-            task.allocated_equipments = allocated_equipments
+            task.allocated_crews = crews
+            task.allocated_equipments = equipment
             
-            # Update successors
-            for succ in [s for s in self.task_map if task.id in self.task_map[s].predecessors]:
-                pred_count[succ] -= 1
-                if pred_count[succ] == 0:
-                    ready.append(succ)
+            # Update successor readiness
+            for successor in [s for s in self.task_map if task.id in self.task_map[s].predecessors]:
+                pred_count[successor] -= 1
+                if pred_count[successor] == 0:
+                    ready.append(successor)
 
         logger.info(f"✅ Schedule generated successfully for {len(schedule)} tasks")
         return schedule
-def get_user_tasks_for_scheduling(user_id):
-    """Get user's tasks organized by discipline for scheduling"""
+
+
+# Database and User Task Functions
+def get_user_tasks_for_scheduling(user_id: int) -> Dict[str, List[Dict]]:
+    """
+    Get user's tasks organized by discipline for scheduling.
+    
+    Args:
+        user_id: User ID to get tasks for
+        
+    Returns:
+        Dictionary of tasks organized by discipline
+    """
     try:
         with SessionLocal() as session:
             user_tasks = session.query(UserBaseTaskDB).filter(
                 UserBaseTaskDB.user_id == user_id,
                 UserBaseTaskDB.included == True
-            ).all() 
+            ).all()
             return organize_user_tasks_by_discipline(user_tasks)
     except Exception as e:
         logger.error(f"Error loading user tasks for user {user_id}: {e}")
-        return []
+        return {}
 
-def organize_user_tasks_by_discipline(user_tasks):
-    """Convert user tasks to the format expected by generate_tasks_hybrid"""
+def organize_user_tasks_by_discipline(user_tasks: List[UserBaseTaskDB]) -> Dict[str, List[Dict]]:
+    """
+    Convert user tasks to format expected by generate_tasks_hybrid.
+    
+    Args:
+        user_tasks: List of user tasks from database
+        
+    Returns:
+        Dictionary of tasks organized by discipline
+    """
     tasks_by_discipline = {}
     
     for task in user_tasks:
         if task.discipline not in tasks_by_discipline:
             tasks_by_discipline[task.discipline] = []
         
-        # ✅ FIXED: Use task.id instead of task.base_task_id
         task_dict = {
-            'id': task.id,  # ✅ CORRECTED: UserBaseTaskDB uses 'id'
+            'id': task.id,
             'name': task.name,
             'discipline': task.discipline,
             'resource_type': task.resource_type,
@@ -636,36 +811,52 @@ def organize_user_tasks_by_discipline(user_tasks):
             'applies_to_floors': task.applies_to_floors,
             'cross_floor_repetition': getattr(task, 'cross_floor_repetition', True),
             'task_type': getattr(task, 'task_type', 'worker')
-        } 
+        }
         tasks_by_discipline[task.discipline].append(task_dict)
+        
     return tasks_by_discipline
 
-def run_schedule(zone_floors, quantity_matrix, start_date, workers_dict=None, 
-                       equipment_dict=None, holidays=None, discipline_zone_cfg=None,
-                       base_tasks_override=None, user_id=None):
+
+def run_schedule(zone_floors: Dict, quantity_matrix: Dict, start_date: pd.Timestamp,
+                 workers_dict: Optional[Dict] = None, equipment_dict: Optional[Dict] = None,
+                 holidays: Optional[List] = None, discipline_zone_cfg: Optional[Dict] = None,
+                 base_tasks_override: Optional[Dict] = None, user_id: Optional[int] = None) -> Tuple[Dict, str]:
     """
-    Run scheduling with HYBRID approach with enhanced error handling
+    Run scheduling with HYBRID approach and enhanced error handling.
+    
+    Args:
+        zone_floors: Dictionary of zones and their floor counts
+        quantity_matrix: Task quantities by zone and floor
+        start_date: Project start date
+        workers_dict: Worker resources (uses defaults if None)
+        equipment_dict: Equipment resources (uses defaults if None)
+        holidays: List of holiday dates
+        discipline_zone_cfg: Discipline-zone configuration
+        base_tasks_override: Override tasks for scheduling
+        user_id: User ID for user-specific tasks
+        
+    Returns:
+        Tuple of (schedule, output_folder)
     """
     from reporting import BasicReporter
     
     try:
-        # Use defaults if no user input
+        # Use provided resources or defaults
         workers_used = workers_dict if workers_dict else workers
         equipment_used = equipment_dict if equipment_dict else equipment
         
-        # DECISION: Use user tasks or default tasks?
+        # Determine which tasks to use
         if base_tasks_override is not None:
             base_tasks_to_use = base_tasks_override
             logger.info("✅ Using provided user tasks")
         elif user_id is not None:
-            # Load user-specific tasks from database
             base_tasks_to_use = get_user_tasks_for_scheduling(user_id)
             logger.info(f"✅ Using tasks for user: {user_id}")
         else:
             base_tasks_to_use = BASE_TASKS
             logger.info("✅ Using default tasks")
         
-        # Generate tasks with HYBRID function
+        # Generate tasks
         tasks = generate_tasks(
             base_tasks_to_use, 
             zone_floors, 
@@ -673,133 +864,149 @@ def run_schedule(zone_floors, quantity_matrix, start_date, workers_dict=None,
             discipline_zone_cfg=discipline_zone_cfg
         )
 
-        # Validate tasks and patch missing data
+        # Validate and patch task data
         tasks, workers_used, equipment_used, quantity_matrix = validate_tasks(
             tasks, workers_used, equipment_used, quantity_matrix
         )
 
-        # Calendar and duration
-        workweek = [0, 1, 2, 3, 4, 5]
+        # Initialize calendar and duration calculator
+        workweek = [0, 1, 2, 3, 4, 5]  # Monday to Saturday
         start_date = pd.Timestamp(start_date)
-        cal = AdvancedCalendar(start_date=start_date, holidays=holidays, workweek=workweek)
-        dur_calc = DurationCalculator(workers_used, equipment_used, quantity_matrix)
+        calendar = AdvancedCalendar(start_date=start_date, holidays=holidays, workweek=workweek)
+        duration_calc = DurationCalculator(workers_used, equipment_used, quantity_matrix)
 
-        # Scheduler
-        sched = AdvancedScheduler(tasks, workers_used, equipment_used, cal, dur_calc)
-        schedule = sched.generate()
+        # Run scheduler
+        scheduler = AdvancedScheduler(tasks, workers_used, equipment_used, calendar, duration_calc)
+        schedule = scheduler.generate()
 
-        # Reporting
-        reporter = BasicReporter(tasks, schedule, sched.worker_manager, sched.equipment_manager, cal)
+        # Generate reports
+        reporter = BasicReporter(tasks, schedule, scheduler.worker_manager, 
+                               scheduler.equipment_manager, calendar)
         output_folder = reporter.export_all()
 
         return schedule, output_folder
         
     except Exception as e:
-        logger.error(f"Schedule generation failed: {e}")
+        logger.error(f"❌ Schedule generation failed: {e}")
         raise
+
 
 def analyze_project_progress(reference_df: pd.DataFrame, actual_df: pd.DataFrame) -> pd.DataFrame:
     """
     Compute planned vs actual progress time series and deviations.
-    Returns a DataFrame indexed by Date with PlannedProgress, Progress (daily average),
-    CumulativeActual and ProgressDeviation columns.
-
-    This version is robust to:
-      - missing sheets/columns,
-      - empty uploaded files,
-      - different date formats,
-      - missing Progress column (treat as 0),
-      - gaps in dates (forward-fill).
+    
+    Args:
+        reference_df: Reference schedule DataFrame
+        actual_df: Actual progress DataFrame
+        
+    Returns:
+        DataFrame with progress analysis
     """
-    # defensive copies
+    # Create defensive copies
     ref_df = reference_df.copy()
     act_df = actual_df.copy()
 
-    # Ensure expected columns exist in reference schedule
-    # Ideally the schedule sheet has columns Start, End, TaskID (or TaskName).
-    for col in ("Start", "End"):
-        if col not in ref_df.columns:
-            raise ValueError(f"Reference schedule missing required column '{col}'")
+    # Validate reference DataFrame
+    for required_col in ("Start", "End"):
+        if required_col not in ref_df.columns:
+            raise ValueError(f"Reference schedule missing required column '{required_col}'")
 
-    # Parse dates robustly
+    # Parse dates
     ref_df["Start"] = pd.to_datetime(ref_df["Start"], errors="coerce")
     ref_df["End"] = pd.to_datetime(ref_df["End"], errors="coerce")
+    
     if ref_df["Start"].isna().all() or ref_df["End"].isna().all():
-        raise ValueError("Reference schedule dates could not be parsed. Check Start/End columns.")
+        raise ValueError("Reference schedule dates could not be parsed.")
 
-    # Build timeline (daily)
+    # Build timeline
     timeline_start = ref_df["Start"].min()
     timeline_end = ref_df["End"].max()
+    
     if pd.isna(timeline_start) or pd.isna(timeline_end):
-        raise ValueError("Reference schedule dates invalid (start/end).")
+        raise ValueError("Reference schedule dates invalid.")
 
     timeline = pd.date_range(timeline_start.normalize(), timeline_end.normalize(), freq="D")
 
-    # Planned curve: fraction of tasks active on each day
-    planned_curve = []
-    total_tasks = max(1, len(ref_df))  # avoid division by zero
+    # Calculate planned progress curve
+    planned_data = []
+    total_tasks = max(1, len(ref_df))
+    
     for day in timeline:
-        ongoing = ref_df[(ref_df["Start"].dt.normalize() <= day) & (ref_df["End"].dt.normalize() >= day)]
-        planned_progress = len(ongoing) / total_tasks
-        planned_curve.append({"Date": day, "PlannedProgress": planned_progress})
+        ongoing_tasks = ref_df[
+            (ref_df["Start"].dt.normalize() <= day) & 
+            (ref_df["End"].dt.normalize() >= day)
+        ]
+        planned_progress = len(ongoing_tasks) / total_tasks
+        planned_data.append({"Date": day, "PlannedProgress": planned_progress})
 
-    planned_df = pd.DataFrame(planned_curve)
+    planned_df = pd.DataFrame(planned_data)
     planned_df["Date"] = pd.to_datetime(planned_df["Date"])
     planned_df = planned_df.set_index("Date")
 
-    # Actual progress: expect actual_df to have Date and Progress columns
+    # Handle actual progress data
     if "Date" not in act_df.columns:
-        # No actual progress provided — return planned_df with NaNs for actual
-        planned_df = planned_df.reset_index()
-        planned_df["Progress"] = 0.0
-        planned_df["CumulativeActual"] = planned_df["Progress"].cumsum().clip(upper=1.0)
-        planned_df["ProgressDeviation"] = planned_df["CumulativeActual"] - planned_df["PlannedProgress"]
-        return planned_df
+        # No actual progress provided
+        return _create_progress_dataframe_without_actual(planned_df, timeline)
 
-    # Parse actual dates; handle missing or malformed Progress
+    # Parse actual dates and progress
     act_df["Date"] = pd.to_datetime(act_df["Date"], errors="coerce")
     act_df = act_df.dropna(subset=["Date"])
+    
     if act_df.empty:
-        # treat as no progress recorded
-        planned_df = planned_df.reset_index()
-        planned_df["Progress"] = 0.0
-        planned_df["CumulativeActual"] = planned_df["Progress"].cumsum().clip(upper=1.0)
-        planned_df["ProgressDeviation"] = planned_df["CumulativeActual"] - planned_df["PlannedProgress"]
-        return planned_df
+        return _create_progress_dataframe_without_actual(planned_df, timeline)
 
-    if "Progress" not in act_df.columns:
-        # maybe user provided percent column named differently — try a few guesses
-        candidate = None
-        for c in ("Pct", "Percentage", "Percent", "Value"):
-            if c in act_df.columns:
-                candidate = c; break
-        if candidate:
-            act_df["Progress"] = pd.to_numeric(act_df[candidate], errors="coerce").fillna(0.0)
-        else:
-            act_df["Progress"] = 0.0
-    else:
-        act_df["Progress"] = pd.to_numeric(act_df["Progress"], errors="coerce").fillna(0.0)
-
-    # Aggregate actual progress by Date (mean)
-    actual_daily = act_df.groupby(act_df["Date"].dt.normalize(), as_index=True).agg({"Progress": "mean"})
+    # Extract progress data
+    act_df["Progress"] = _extract_progress_values(act_df)
+    
+    # Aggregate actual progress by date
+    actual_daily = act_df.groupby(act_df["Date"].dt.normalize()).agg({"Progress": "mean"})
     actual_daily.index.name = "Date"
 
-    # Reindex to planned timeline with forward-fill/backfill as appropriate
+    # Combine planned and actual data
+    return _combine_progress_data(planned_df, actual_daily, timeline)
+
+
+def _create_progress_dataframe_without_actual(planned_df: pd.DataFrame, timeline: pd.DatetimeIndex) -> pd.DataFrame:
+    """Create progress DataFrame when no actual data is available."""
+    result_df = planned_df.reset_index()
+    result_df["Progress"] = 0.0
+    result_df["CumulativeActual"] = result_df["Progress"].cumsum().clip(upper=1.0)
+    result_df["ProgressDeviation"] = result_df["CumulativeActual"] - result_df["PlannedProgress"]
+    return result_df
+
+
+def _extract_progress_values(act_df: pd.DataFrame) -> pd.Series:
+    """Extract progress values from actual DataFrame with fallback handling."""
+    if "Progress" in act_df.columns:
+        return pd.to_numeric(act_df["Progress"], errors="coerce").fillna(0.0)
+    
+    # Try alternative column names
+    progress_aliases = ["Pct", "Percentage", "Percent", "Value", "Progress%"]
+    for alias in progress_aliases:
+        if alias in act_df.columns:
+            return pd.to_numeric(act_df[alias], errors="coerce").fillna(0.0)
+    
+    # Default to zero progress
+    return pd.Series([0.0] * len(act_df), index=act_df.index)
+
+
+def _combine_progress_data(planned_df: pd.DataFrame, actual_daily: pd.DataFrame, 
+                          timeline: pd.DatetimeIndex) -> pd.DataFrame:
+    """Combine planned and actual progress data."""
     full_index = pd.DatetimeIndex(timeline)
-    actual_daily = actual_daily.reindex(full_index, method=None)  # allow NaNs
-    actual_daily["Progress"] = actual_daily["Progress"].fillna(0.0)  # if no measurement => 0 progress that day
+    
+    # Reindex actual data to full timeline
+    actual_daily = actual_daily.reindex(full_index)
+    actual_daily["Progress"] = actual_daily["Progress"].fillna(0.0)
+    
+    # Calculate cumulative actual progress
+    actual_daily["CumulativeActual"] = actual_daily["Progress"].cumsum().clip(upper=1.0)
 
-    # Cumulative actual progress
-    actual_daily["CumulativeActual"] = actual_daily["Progress"].cumsum()
-    actual_daily["CumulativeActual"] = actual_daily["CumulativeActual"].clip(upper=1.0)
-
-    # Combine planned and actual
+    # Combine datasets
     combined = pd.DataFrame(index=full_index)
     combined["PlannedProgress"] = planned_df["PlannedProgress"].reindex(full_index, fill_value=0.0)
     combined["Progress"] = actual_daily["Progress"]
     combined["CumulativeActual"] = actual_daily["CumulativeActual"]
     combined["ProgressDeviation"] = combined["CumulativeActual"] - combined["PlannedProgress"]
-    combined = combined.reset_index().rename(columns={"index": "Date"})
-    return combined
-
-
+    
+    return combined.reset_index().rename(columns={"index": "Date"})
