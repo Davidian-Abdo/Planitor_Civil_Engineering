@@ -1,13 +1,61 @@
 """
 Enhanced database operations for task management
 """
-
 from sqlalchemy.orm import Session
 from backend.database import SessionLocal
-from backend.db_models import UserBaseTaskDB
+from backend.db_models import UserBaseTaskDB, UserDB
 import logging
 
 logger = logging.getLogger(__name__)
+
+def copy_default_tasks_to_user(user_id):
+    """Copy default tasks to user's personal library"""
+    try:
+        with SessionLocal() as session:
+            # Get default tasks (system tasks or tasks with no specific user)
+            default_tasks = session.query(UserBaseTaskDB).filter(
+                (UserBaseTaskDB.user_id.is_(None)) | 
+                (UserBaseTaskDB.created_by_user == False)
+            ).all()
+            
+            created_count = 0
+            for default_task in default_tasks:
+                # Check if user already has this task
+                existing = session.query(UserBaseTaskDB).filter(
+                    UserBaseTaskDB.user_id == user_id,
+                    UserBaseTaskDB.name == default_task.name,
+                    UserBaseTaskDB.discipline == default_task.discipline
+                ).first()
+                
+                if not existing:
+                    # Create user-specific copy
+                    user_task = UserBaseTaskDB(
+                        user_id=user_id,
+                        name=default_task.name,
+                        discipline=default_task.discipline,
+                        resource_type=default_task.resource_type,
+                        task_type=getattr(default_task, 'task_type', 'worker'),
+                        base_duration=default_task.base_duration,
+                        min_crews_needed=default_task.min_crews_needed,
+                        min_equipment_needed=default_task.min_equipment_needed,
+                        predecessors=default_task.predecessors,
+                        repeat_on_floor=default_task.repeat_on_floor,
+                        included=default_task.included,
+                        delay=default_task.delay,
+                        cross_floor_dependencies=getattr(default_task, 'cross_floor_dependencies', []),
+                        applies_to_floors=getattr(default_task, 'applies_to_floors', 'auto'),
+                        created_by_user=True  # Mark as user's custom task
+                    )
+                    session.add(user_task)
+                    created_count += 1
+            
+            session.commit()
+            logger.info(f"✅ Copied {created_count} default tasks to user {user_id}")
+            return created_count
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to copy default tasks: {e}")
+        return 0
 
 def save_enhanced_task(session, task, is_new, user_id, name, discipline, resource_type, 
                       base_duration, min_crews_needed, delay, min_equipment_needed, 
@@ -118,3 +166,12 @@ def get_user_tasks_with_filters(user_id, search_term="", discipline_filter=None)
     except Exception as e:
         logger.error(f"❌ Failed to load tasks: {e}")
         return []
+
+def get_user_task_count(user_id):
+    """Get count of tasks for a user"""
+    try:
+        with SessionLocal() as session:
+            return session.query(UserBaseTaskDB).filter(UserBaseTaskDB.user_id == user_id).count()
+    except Exception as e:
+        logger.error(f"❌ Failed to get task count: {e}")
+        return 0
