@@ -1,6 +1,7 @@
 # ui_helpers.py - COMPLETE VERSION WITH ALL UI FUNCTIONS
 import streamlit as st
 from backend.database import SessionLocal
+import pandas as pd
 from backend.db_models import UserBaseTaskDB
 from defaults import disciplines
 from models import DisciplineZoneConfig
