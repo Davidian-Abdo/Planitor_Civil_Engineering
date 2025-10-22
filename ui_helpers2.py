@@ -90,16 +90,19 @@ def show_task_management_interface(user_id, user_role):
     with col5:
         if st.button("🔄 Reset to Default Tasks"):
             count = reset_user_tasks_to_defaults(current_user_id)
-        if count:
-            st.success(f"✅ Imported {count} default tasks!")
-        else:
-            st.info("All default tasks already exist in your library.")
-        st.rerun()
-    
+            if count:
+                st.success(f"✅ Imported {count} default tasks!")
+            else:
+                st.info("All default tasks already exist in your library.")
+            st.rerun()
     with col6:
         task_count = get_user_task_count(user_id)
         st.metric("Your Tasks", task_count)
-    
+        
+    if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
+        st.markdown("---")
+        with SessionLocal() as session:
+            display_task_editor(session, user_id)  # Added missing function call
     # Load and display tasks
     tasks = get_user_tasks_with_filters(user_id, search_term, discipline_filter)
     
@@ -110,11 +113,6 @@ def show_task_management_interface(user_id, user_role):
     # Display tasks in professional table
     display_task_table(tasks, user_id)
     
-    # Task editor (appears when editing/creating)
-    if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
-        st.markdown("---")
-        with SessionLocal() as session:
-            display_task_editor(session, user_id)  # Added missing function call
 
 def display_task_table(tasks, user_id):
     """Display tasks as a professional styled table with actions - SHOWS DURATION TYPE"""
