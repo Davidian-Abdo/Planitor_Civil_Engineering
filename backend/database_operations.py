@@ -9,7 +9,7 @@ from backend.db_models import UserBaseTaskDB, UserDB
 import logging
 
 logger = logging.getLogger(__name__)
-def save_enhanced_task(session, task, is_new, user_id, name, discipline, resource_type, 
+def save_enhanced_task(session, task, is_new, user_id, name,task_id, discipline, resource_type, 
                       base_duration, min_crews_needed, delay, min_equipment_needed, 
                       predecessors, cross_floor_config, task_type, repeat_on_floor, 
                       included=True, sub_discipline=None):  # ✅ NEW: Add sub_discipline parameter
@@ -18,6 +18,7 @@ def save_enhanced_task(session, task, is_new, user_id, name, discipline, resourc
         if is_new:
             new_task = UserBaseTaskDB(
                 user_id=user_id,
+                task_id=task_id,
                 name=name,
                 discipline=discipline,
                 sub_discipline=sub_discipline,  # ✅ NEW: Include sub_discipline
