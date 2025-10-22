@@ -446,7 +446,7 @@ def check_and_migrate_database():
     try:
         with SessionLocal() as session:
             # Fix the constraint first
-            if not migrate_fix_task_type_constraint():
+            if not migrate_remove_restrictive_constraints():
                 return False
                 
             # Rest of your migration logic...
