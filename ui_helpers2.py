@@ -48,7 +48,7 @@ def reset_user_tasks_to_defaults(user_id):
                 if base_task.id not in existing_ids:
                     new_task = UserBaseTaskDB(
                         user_id=user_id,
-                        base_task_id=base_task.id,
+                        task_id=base_task.id,
                         name=base_task.name,
                         discipline=base_task.discipline,
                         sub_discipline=base_task.sub_discipline,
@@ -132,7 +132,7 @@ def display_task_table(tasks, user_id):
             duration_tooltip = "Fixed duration (manual)"
         
         task_data.append({
-            "ID": task.id,
+            "ID": task.task_id,
             "Name": task.name,
             "Discipline": task.discipline,
             "Resource": task.resource_type,
