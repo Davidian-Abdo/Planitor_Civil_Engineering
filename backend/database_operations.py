@@ -72,55 +72,100 @@ def copy_default_tasks_to_user(user_id: int, session) -> int:
     try:
         from defaults import BASE_TASKS
         
+        # FIRST: Ensure system default tasks exist (created_by_user=False)
+        system_tasks_count = session.query(UserBaseTaskDB).filter_by(created_by_user=False).count()
+        
+        if system_tasks_count == 0:
+            # Create system default tasks first
+            logger.info("🔄 Creating system default tasks...")
+            admin_user = session.query(UserDB).filter_by(username="admin").first()
+            if not admin_user:
+                logger.error("❌ Admin user not found for system task creation")
+                return 0
+                
+            system_tasks_created = 0
+            for discipline, tasks in BASE_TASKS.items():
+                for base_task in tasks:
+                    # Skip excluded tasks
+                    if not getattr(base_task, 'included', True):
+                        continue
+                    
+                    # Create system task (created_by_user=False)
+                    system_task = UserBaseTaskDB(
+                        user_id=admin_user.id,  # Owned by admin
+                        name=getattr(base_task, 'name', 'Unknown Task'),
+                        discipline=discipline,
+                        sub_discipline=getattr(base_task, 'sub_discipline', None),
+                        resource_type=getattr(base_task, 'resource_type', 'BétonArmé'),
+                        task_type=getattr(base_task, 'task_type', 'worker'),
+                        base_duration=getattr(base_task, 'base_duration', None),
+                        min_crews_needed=getattr(base_task, 'min_crews_needed', 1),
+                        min_equipment_needed=getattr(base_task, 'min_equipment_needed', {}),
+                        predecessors=getattr(base_task, 'predecessors', []),
+                        repeat_on_floor=getattr(base_task, 'repeat_on_floor', True),
+                        included=getattr(base_task, 'included', True),
+                        delay=getattr(base_task, 'delay', 0),
+                        cross_floor_dependencies=getattr(base_task, 'cross_floor_dependencies', []),
+                        applies_to_floors=getattr(base_task, 'applies_to_floors', 'auto'),
+                        created_by_user=False,  # Mark as system task
+                        creator_id=admin_user.id
+                    )
+                    session.add(system_task)
+                    system_tasks_created += 1
+            
+            if system_tasks_created > 0:
+                session.commit()
+                logger.info(f"✅ Created {system_tasks_created} system default tasks")
+        
+        # NOW: Copy system tasks to user
+        user_tasks_created = 0
+        
         # Get existing task names for this user to avoid duplicates
         existing_tasks = session.query(UserBaseTaskDB.name).filter(
             UserBaseTaskDB.user_id == user_id
         ).all()
         existing_task_names = {task[0] for task in existing_tasks}
         
-        tasks_created = 0
-        for discipline, tasks in BASE_TASKS.items():
-            for base_task in tasks:
-                # Skip if task already exists for this user
-                if getattr(base_task, 'name', 'Unknown') in existing_task_names:
-                    continue
-                    
-                # Skip excluded tasks
-                if not getattr(base_task, 'included', True):
-                    continue
+        # Get all system tasks to copy to user
+        system_tasks = session.query(UserBaseTaskDB).filter_by(created_by_user=False).all()
+        
+        for system_task in system_tasks:
+            # Skip if task already exists for this user
+            if system_task.name in existing_task_names:
+                continue
                 
-                # Create new task for user
-                new_task = UserBaseTaskDB(
-                    user_id=user_id,
-                    name=getattr(base_task, 'name', 'Unknown Task'),
-                    discipline=discipline,
-                    sub_discipline=getattr(base_task, 'sub_discipline', None),
-                    resource_type=getattr(base_task, 'resource_type', 'BétonArmé'),
-                    task_type=getattr(base_task, 'task_type', 'worker'),
-                    base_duration=getattr(base_task, 'base_duration', None),
-                    min_crews_needed=getattr(base_task, 'min_crews_needed', 1),
-                    min_equipment_needed=getattr(base_task, 'min_equipment_needed', {}),
-                    predecessors=getattr(base_task, 'predecessors', []),
-                    repeat_on_floor=getattr(base_task, 'repeat_on_floor', True),
-                    included=getattr(base_task, 'included', True),
-                    delay=getattr(base_task, 'delay', 0),
-                    cross_floor_dependencies=getattr(base_task, 'cross_floor_dependencies', []),
-                    applies_to_floors=getattr(base_task, 'applies_to_floors', 'auto'),
-                    created_by_user=False,  # Mark as system-created
-                    creator_id=user_id
-                )
-                session.add(new_task)
-                tasks_created += 1
+            # Create user copy of system task
+            user_task = UserBaseTaskDB(
+                user_id=user_id,
+                name=system_task.name,
+                discipline=system_task.discipline,
+                sub_discipline=system_task.sub_discipline,
+                resource_type=system_task.resource_type,
+                task_type=system_task.task_type,
+                base_duration=system_task.base_duration,
+                min_crews_needed=system_task.min_crews_needed,
+                min_equipment_needed=system_task.min_equipment_needed,
+                predecessors=system_task.predecessors.copy() if system_task.predecessors else [],
+                repeat_on_floor=system_task.repeat_on_floor,
+                included=system_task.included,
+                delay=system_task.delay,
+                cross_floor_dependencies=system_task.cross_floor_dependencies.copy() if system_task.cross_floor_dependencies else [],
+                applies_to_floors=system_task.applies_to_floors,
+                created_by_user=False,  # Still marked as system-created (not user custom)
+                creator_id=user_id
+            )
+            session.add(user_task)
+            user_tasks_created += 1
         
-        if tasks_created > 0:
+        if user_tasks_created > 0:
             session.commit()
-            logger.info(f"Copied {tasks_created} default tasks to user {user_id}")
+            logger.info(f"✅ Copied {user_tasks_created} default tasks to user {user_id}")
         
-        return tasks_created
+        return user_tasks_created
         
     except Exception as e:
         session.rollback()
-        logger.error(f"Error copying default tasks to user {user_id}: {e}")
+        logger.error(f"❌ Error copying default tasks to user {user_id}: {e}")
         return 0
 def create_default_tasks_from_defaults_py(user_id=None):
     """Create default tasks from defaults.py by calling copy_default_tasks_to_user"""
