@@ -86,10 +86,6 @@ ehthumbs.db
 Thumbs.db
 *.lnk
 
-# --------------------------
-# Streamlit
-# --------------------------
-.streamlit/config.toml  # Optional, ignore local config
 
 # --------------------------
 # Docker
