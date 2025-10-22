@@ -63,7 +63,7 @@ templates/*.xls
 .env.local
 .env.production
 .env.development
-.streamlit/secrets.toml
+
 
 # --------------------------
 # IDE / Editor
