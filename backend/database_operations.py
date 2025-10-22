@@ -255,6 +255,7 @@ def duplicate_task(original_task, user_id, new_stable_id=None, modifications=Non
         logger.exception(f"❌ Unexpected error duplicating task: {e}")
         return False
 
+
 # ✅ NEW: Add filtering by sub_discipline
 def get_user_tasks_with_filters(user_id, search_term="", discipline_filter=None, sub_discipline_filter=None):
     """Get tasks with advanced filtering - INCLUDES sub_discipline filtering"""
