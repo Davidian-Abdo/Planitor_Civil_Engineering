@@ -138,7 +138,7 @@ def copy_default_tasks_to_user(user_id: int, session) -> int:
                 
             # Create user copy of system task
             user_task = UserBaseTaskDB(
-                task_id = system_task.task_id
+                task_id = system_task.task_id,
                 user_id=user_id,
                 name=system_task.name,
                 discipline=system_task.discipline,
