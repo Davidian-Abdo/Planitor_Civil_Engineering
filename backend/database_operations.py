@@ -254,6 +254,17 @@ def migrate_remove_restrictive_constraints():
                     ALTER TABLE user_base_tasks 
                     DROP CONSTRAINT IF EXISTS valid_resource_type
                 """))
+                conn.execute(sa.text("""
+                    ALTER TABLE user_base_tasks 
+                    DROP CONSTRAINT IF EXISTS valid_task_type
+                """))
+                
+                # Create new constraint with 'supervision'
+                conn.execute(sa.text("""
+                    ALTER TABLE user_base_tasks 
+                    ADD CONSTRAINT valid_task_type 
+                    CHECK (task_type IN ('worker', 'equipment', 'hybrid', 'supervision'))
+                """))
                 conn.commit()
             logger.info("✅ Removed restrictive constraints")
             return True
