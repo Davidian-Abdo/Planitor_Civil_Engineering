@@ -416,7 +416,7 @@ def get_user_by_username(username: str):
     except Exception as e:
         logger.error(f"Error getting user {username}: {e}")
         return None
-def migrate_fix_task_type_constraint():
+def migrate_remove_restrictive_constraints():
     """Fix the task_type constraint to include 'supervision'"""
     try:
         with SessionLocal() as session:
