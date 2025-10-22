@@ -17,8 +17,9 @@ from scheduling_engin import run_schedule, analyze_project_progress
 from ui_helpers import (
     inject_ui_styles, create_metric_row, create_info_card,
     render_upload_section, render_discipline_zone_config, 
-    enhanced_task_management, organize_tasks_by_discipline
+    organize_tasks_by_discipline
 )
+from ui_helpers2.py import enhanced_task_management
 from helpers import (
     generate_quantity_template, generate_worker_template, 
     generate_equipment_template, parse_quantity_excel, 
