@@ -1,6 +1,10 @@
 import streamlit as st
 import pandas as pd
-
+from backend.database import sessionlocal
+from backend.database_operations import (
+    copy_default_tasks_to_user, save_enhanced_task, duplicate_task, 
+    delete_task, get_user_tasks_with_filters, get_user_task_count
+)
 def enhanced_task_management():
     """Professional task management with auto-creation of default tasks"""
     st.subheader("📝 Construction Task Library")
