@@ -63,10 +63,6 @@ templates/*.xls
 .env.local
 .env.production
 .env.development
-<<<<<<< HEAD
-
-=======
->>>>>>> 4df10e1 (add stremlit)
 
 # --------------------------
 # IDE / Editor
