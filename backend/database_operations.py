@@ -93,7 +93,7 @@ def copy_default_tasks_to_user(user_id: int, session) -> int:
                     
                     # Create system task (created_by_user=False)
                     system_task = UserBaseTaskDB(
-                        task_id = getattr(base_task, 'task_id', 'Unknown id')
+                        task_id = getattr(base_task, 'task_id', 'Unknown id'),
                         user_id=admin_user.id,  # Owned by admin
                         name=getattr(base_task, 'name', 'Unknown Task'),
                         discipline=discipline,
