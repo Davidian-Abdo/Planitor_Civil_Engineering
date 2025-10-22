@@ -8,7 +8,7 @@ from datetime import datetime
 Base=declarative_base()
 # Constants for validation
 VALID_ROLES = ['admin', 'manager', 'worker', 'viewer']
-VALID_TASK_TYPES = ['worker', 'equipment', 'hybrid']
+VALID_TASK_TYPES = ['worker', 'equipment', 'hybrid','supervision']
 VALID_DISCIPLINES = {
     'Préliminaires': ['InstallationChantier', 'PréparationTerrain'],
     'Terrassement': ['Décapage', 'Excavation', 'Soutènement Temporaire','Soutènement Permanant'],
