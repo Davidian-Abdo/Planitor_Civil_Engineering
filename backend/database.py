@@ -6,7 +6,7 @@ import time
 import sys
 from contextlib import contextmanager
 from typing import Generator, Dict, Any
-
+from db_models import Base
 from sqlalchemy import create_engine, event, text, exc
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from sqlalchemy.pool import QueuePool, StaticPool
@@ -174,7 +174,6 @@ SessionLocal = sessionmaker(
     class_=Session
 )
 
-Base = declarative_base()
 
 # SQLAlchemy event listeners for monitoring and optimization
 @event.listens_for(engine, "connect")
