@@ -32,10 +32,46 @@ def enhanced_task_management():
     # User has tasks - show full management interface
     show_task_management_interface(current_user_id, user_role)
 
+def reset_user_tasks_to_defaults(user_id):
+    """Reset all default tasks for a user without duplicates"""
+    with SessionLocal() as session:
+        # Get existing stable IDs for this user
+        existing_ids = {
+            t.base_task_id for t in session.query(UserBaseTaskDB)
+            .filter(UserBaseTaskDB.user_id == user_id)
+            .all()
+        }
+
+        new_tasks = []
+        for discipline, task_list in BASE_TASKS.items():
+            for base_task in task_list:
+                if base_task.id not in existing_ids:
+                    new_task = UserBaseTaskDB(
+                        user_id=user_id,
+                        base_task_id=base_task.id,
+                        name=base_task.name,
+                        discipline=base_task.discipline,
+                        sub_discipline=base_task.sub_discipline,
+                        resource_type=base_task.resource_type,
+                        task_type=base_task.task_type,
+                        base_duration=base_task.base_duration,
+                        min_crews_needed=getattr(base_task, "min_crews_needed", 1),
+                        min_equipment_needed=getattr(base_task, "min_equipment_needed", {}),
+                        predecessors=base_task.predecessors,
+                        repeat_on_floor=getattr(base_task, "repeat_on_floor", True),
+                        created_by_user=False
+                    )
+                    new_tasks.append(new_task)
+
+        if new_tasks:
+            session.add_all(new_tasks)
+            session.commit()
+            return len(new_tasks)
+        return 0
 def show_task_management_interface(user_id, user_role):
     """Show full task management interface"""
     # Top action bar
-    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
+    col1, col2, col3, col4, col5 ,col6= st.columns([3, 1, 1, 1, 1,1])
     
     with col1:
         search_term = st.text_input("🔍 Search tasks...", placeholder="Search by name, discipline, or resource type")
@@ -51,8 +87,16 @@ def show_task_management_interface(user_id, user_role):
     with col4:
         if st.button("📥 Import", use_container_width=True, help="Import from templates"):
             show_import_template_modal(user_id)
-    
     with col5:
+        if st.button("🔄 Reset to Default Tasks"):
+            count = reset_user_tasks_to_defaults(current_user_id)
+        if count:
+            st.success(f"✅ Imported {count} default tasks!")
+        else:
+            st.info("All default tasks already exist in your library.")
+        st.rerun()
+    
+    with col6:
         task_count = get_user_task_count(user_id)
         st.metric("Your Tasks", task_count)
     
