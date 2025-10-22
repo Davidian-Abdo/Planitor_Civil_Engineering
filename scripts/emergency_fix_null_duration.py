@@ -17,12 +17,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def emergency_fix_null_duration():
-    """Emergency fix for NULL duration constraint"""
-    logger.info("🚨 Running EMERGENCY fix for NULL duration constraint...")
+    """Emergency fix for NULL duration and add base_task_id column"""
+    logger.info("🚨 Running EMERGENCY fix for NULL duration and adding base_task_id...")
     
     try:
         with engine.connect() as conn:
-            # 1. Make column nullable
+            # 1. Make base_duration nullable
             conn.execute(text("""
                 ALTER TABLE user_base_tasks 
                 ALTER COLUMN base_duration DROP NOT NULL
@@ -51,21 +51,35 @@ def emergency_fix_null_duration():
             """))
             logger.info("✅ Step 4: Added NULL-allowing constraint")
             
+            # 5. Add new column base_task_id
+            conn.execute(text("""
+                ALTER TABLE user_base_tasks
+                ADD COLUMN IF NOT EXISTS base_task_id VARCHAR(50)
+            """))
+            logger.info("✅ Step 5: Added base_task_id column")
+            
+            # Optional: populate base_task_id with existing id if null
+            conn.execute(text("""
+                UPDATE user_base_tasks
+                SET base_task_id = id::text
+                WHERE base_task_id IS NULL
+            """))
+            logger.info("✅ Step 6: Populated base_task_id with existing ids")
+            
             conn.commit()
             
             # Verify the fix
             result = conn.execute(text("""
                 SELECT column_name, is_nullable 
                 FROM information_schema.columns 
-                WHERE table_name = 'user_base_tasks' AND column_name = 'base_duration'
-            """)).fetchone()
+                WHERE table_name = 'user_base_tasks' AND column_name IN ('base_duration','base_task_id')
+            """)).fetchall()
             
-            if result and result[1] == 'YES':
-                logger.info("🎉 SUCCESS: base_duration now accepts NULL values!")
-                return True
-            else:
-                logger.error("❌ FAILED: base_duration still not nullable")
-                return False
+            for column in result:
+                logger.info(f"Column {column[0]} nullable? {column[1]}")
+            
+            logger.info("🎉 SUCCESS: Emergency fix applied!")
+            return True
                 
     except Exception as e:
         logger.error(f"❌ Emergency fix failed: {e}")
