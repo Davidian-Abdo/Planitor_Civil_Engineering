@@ -111,7 +111,7 @@ try:
     from backend.database_operations import (
          save_enhanced_task, duplicate_task, 
         delete_task, get_user_tasks_with_filters, get_user_task_count,
-        create_default_tasks_from_defaults_py, migrate_sub_discipline_column
+        create_default_tasks_from_defaults_py, migrate_remove_restrictive_constraints, check_and_migrate_database 
     )
     OPERATIONS_IMPORTS_SUCCESSFUL = True
 except ImportError as e:
@@ -191,7 +191,8 @@ __all__: List[str] = [
     'get_user_tasks_with_filters', 
     'get_user_task_count', 
     'create_default_tasks_from_defaults_py',
-    'migrate_sub_discipline_column',
+    'migrate_remove_restrictive_constraints',
+    'check_and_migrate_database',
     
     # Logging
     'logger'
