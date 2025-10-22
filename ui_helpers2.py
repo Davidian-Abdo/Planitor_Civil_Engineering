@@ -1,305 +1,468 @@
-BASE_TASKS = {
-    "Préliminaires": [
-        BaseTask(
-            id="PRE-01", name="Validation Plan Implantation EXE", discipline="Préliminaires",
-            sub_discipline="PréparationTerrain", resource_type="Topographe", task_type="supervision", 
-            base_duration=1, predecessors=[], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="PRE-02", name="Installation Chantier - Bases Vie", discipline="Préliminaires",
-            sub_discipline="InstallationChantier", resource_type="Maçon", task_type="worker", 
-            base_duration=5, repeat_on_floor=False, min_crews_needed=2, predecessors=["PRE-01"]
-        ),
-        BaseTask(
-            id="PRE-03", name="Levé Topographique Initial", discipline="Préliminaires",
-            sub_discipline="PréparationTerrain", resource_type="Topographe", task_type="supervision", predecessors=["PRE-01"], 
-            base_duration=2, repeat_on_floor=False, min_crews_needed=1
-        ),
-    ],
+import streamlit as st
+import pandas as pd
+
+def enhanced_task_management():
+    """Professional task management with auto-creation of default tasks"""
+    st.subheader("📝 Construction Task Library")
     
-    "Terrassement": [
-        BaseTask(
-            id="TER-01", name="Validation Plans Niveaux EXE", discipline="Terrassement",
-            sub_discipline="Excavation", resource_type="Topographe", task_type="supervision", 
-            base_duration=1, min_crews_needed=1, predecessors=["PRE-03"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="TER-02", name="Décapage Terrain Végétal", discipline="Terrassement",
-            sub_discipline="Décapage", resource_type="ConducteurEngins", task_type="equipment", 
-            base_duration=3, min_equipment_needed={"Bulldozer": 1, "Chargeuse": 1}, 
-            min_crews_needed=2, predecessors=["TER-01"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="TER-03", name="Excavation en Masse", discipline="Terrassement",
-            sub_discipline="Excavation", resource_type="ConducteurEngins", task_type="equipment", 
-            base_duration=10, min_equipment_needed={"Pelle": 2, "Chargeuse": 1, "Camion": 3},
-            min_crews_needed=4, predecessors=["TER-02"], repeat_on_floor=False
-        ),
-    ],
+    # Get current user ID
+    current_user_id = st.session_state["user"]["id"]
+    current_username = st.session_state["user"]["username"]
+    user_role = st.session_state["user"]["role"]
     
-    "FondationsProfondes": [
-        # PIEUX FORÉS
-        BaseTask(
-            id="FDP-01", name="Reconnaissance Géotechnique Complémentaire", discipline="FondationsProfondes",
-            sub_discipline="Pieux", resource_type="Topographe", task_type="supervision", base_duration=3,
-            predecessors=["TER-03"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-02", name="Implantation Axes Pieux", discipline="FondationsProfondes",
-            sub_discipline="Pieux", resource_type="Topographe", task_type="worker", base_duration=2,
-            min_crews_needed=2, predecessors=["FDP-01"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-03", name="Forage des Pieux", discipline="FondationsProfondes",
-            sub_discipline="Pieux", resource_type="ConducteurEngins", task_type="equipment", base_duration=15,
-            min_equipment_needed={"Foreuse": 2, "Camion": 3}, min_crews_needed=4,
-            predecessors=["FDP-02"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-04", name="Nettoyage Fond de Fouille", discipline="FondationsProfondes",
-            sub_discipline="Pieux", resource_type="ConducteurEngins", task_type="equipment", base_duration=2,
-            min_equipment_needed={"Pelle": 1}, min_crews_needed=2,
-            predecessors=["FDP-03"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-05", name="Contrôle Géotechnique Fond de Fouille", discipline="FondationsProfondes",
-            sub_discipline="Pieux", resource_type="Topographe", task_type="supervision", base_duration=1,
-            min_crews_needed=1, predecessors=["FDP-04"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-06", name="Ferraillage des Pieux", discipline="FondationsProfondes",
-            sub_discipline="Pieux", resource_type="Ferrailleur", task_type="worker", base_duration=8,
-            min_equipment_needed={"Grue mobile": 1}, min_crews_needed=3,
-            predecessors=["FDP-05"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-07", name="Bétonnage des Pieux par Trémie", discipline="FondationsProfondes",
-            sub_discipline="Pieux", resource_type="BétonArmé", task_type="hybrid", base_duration=6,
-            min_equipment_needed={"Bétonier": 2, "Pump": 1}, min_crews_needed=4,
-            predecessors=["FDP-06"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-08", name="Contrôle Béton par Carottage", discipline="FondationsProfondes",
-            sub_discipline="Pieux", resource_type="BétonArmé", task_type="supervision", base_duration=4,
-            min_crews_needed=1, predecessors=["FDP-07"], repeat_on_floor=False, delay=14
-        ),
-        
-        # PAROIS MOULÉES
-        BaseTask(
-            id="FDP-09", name="Exécution Parois Moulées Guides", discipline="FondationsProfondes",
-            sub_discipline="ParoisMoulées", resource_type="ConducteurEngins", task_type="equipment", base_duration=5,
-            min_equipment_needed={"Hydrofraise": 1}, min_crews_needed=3,
-            predecessors=["FDP-02"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-10", name="Forage Parois Moulées", discipline="FondationsProfondes",
-            sub_discipline="ParoisMoulées", resource_type="ConducteurEngins", task_type="equipment", base_duration=12,
-            min_equipment_needed={"Hydrofraise": 1}, min_crews_needed=4,
-            predecessors=["FDP-09"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-11", name="Pose Cage Ferraillage Parois", discipline="FondationsProfondes",
-            sub_discipline="ParoisMoulées", resource_type="Ferrailleur", task_type="worker", base_duration=7,
-            min_equipment_needed={"Grue mobile": 2}, min_crews_needed=4,
-            predecessors=["FDP-10"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-12", name="Bétonnage Parois Moulées", discipline="FondationsProfondes",
-            sub_discipline="ParoisMoulées", resource_type="BétonArmé", task_type="hybrid", base_duration=8,
-            min_equipment_needed={"Bétonier": 3, "Pump": 1}, min_crews_needed=5,
-            predecessors=["FDP-11"], repeat_on_floor=False
-        ),
-        
-        # MICROPIEUX ET INCLUSIONS
-        BaseTask(
-            id="FDP-13", name="Forage MicroPieux", discipline="FondationsProfondes",
-            sub_discipline="MicroPieux", resource_type="ConducteurEngins", task_type="equipment", base_duration=10,
-            min_equipment_needed={"Foreuse": 3}, min_crews_needed=4,
-            predecessors=["FDP-02"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-14", name="Injection MicroPieux", discipline="FondationsProfondes",
-            sub_discipline="MicroPieux", resource_type="OpérateurJetGrouting", task_type="hybrid", base_duration=6,
-            min_equipment_needed={"Pump": 2}, min_crews_needed=3,
-            predecessors=["FDP-13"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-15", name="Mise en Place Inclusions Rigides", discipline="FondationsProfondes",
-            sub_discipline="Inclusions", resource_type="BétonArmé", task_type="equipment", base_duration=8,
-            min_equipment_needed={"Foreuse": 2}, min_crews_needed=3,
-            predecessors=["FDP-02"], repeat_on_floor=False
-        ),
-        
-        # TRAITEMENTS DE SOL
-        BaseTask(
-            id="FDP-16", name="Jet Grouting - Colonnes de Sol", discipline="FondationsProfondes",
-            sub_discipline="Inclusions", resource_type="OpérateurJetGrouting", task_type="equipment", base_duration=12,
-            min_equipment_needed={"Pump": 2}, min_crews_needed=4,
-            predecessors=["FDP-01"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="FDP-17", name="Contrôle Intégrité Pieux par Sismique", discipline="FondationsProfondes",
-            sub_discipline="Pieux", resource_type="Topographe", task_type="supervision", base_duration=3,
-            min_crews_needed=2, predecessors=["FDP-08"], repeat_on_floor=False
-        ),
-    ],
+    # ✅ TEMPORARY DEBUG BUTTON - REMOVE LATER
+    if st.sidebar.button("🛠️ Debug Task System"):
+        debug_task_system()
+        return
     
-    "GrosŒuvre": [
-        # FONDATIONS SUPERFICIELLES
-        BaseTask(
-            id="GO-F-01", name="Validation Plans Coffrage/Ferraillage Fondations", discipline="GrosŒuvre",
-            sub_discipline="FondationsSuperficielles", resource_type="BétonArmé", task_type="supervision", base_duration=1,
-            predecessors=["FDP-08", "FDP-12"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="GO-F-02", name="Préparation Plateforme Radier", discipline="GrosŒuvre",
-            sub_discipline="FondationsSuperficielles", resource_type="BétonArmé", task_type="hybrid", base_duration=3,
-            min_equipment_needed={"Compacteur": 1, "Niveleuse": 1}, min_crews_needed=2,
-            predecessors=["GO-F-01"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="GO-F-03", name="Coffrage Radier", discipline="GrosŒuvre",
-            sub_discipline="FondationsSuperficielles", resource_type="BétonArmé", task_type="hybrid", base_duration=5,
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=3,
-            predecessors=["GO-F-02"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="GO-F-04", name="Ferraillage Radier", discipline="GrosŒuvre",
-            sub_discipline="FondationsSuperficielles", resource_type="Ferrailleur", task_type="worker", base_duration=7,
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=4,
-            predecessors=["GO-F-03"], repeat_on_floor=False
-        ),
-        BaseTask(
-            id="GO-F-05", name="Bétonnage Radier", discipline="GrosŒuvre",
-            sub_discipline="FondationsSuperficielles", resource_type="BétonArmé", task_type="hybrid", base_duration=4,
-            min_equipment_needed={"Pump": 2, "Bétonier": 3}, min_crews_needed=5,
-            predecessors=["GO-F-04"], repeat_on_floor=False
-        ),
-        
-        # SUPERSTRUCTURE
-        BaseTask(
-            id="GO-S-01", name="Validation Plans Structure EXE", discipline="GrosŒuvre",
-            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="supervision", base_duration=1,
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2, predecessors=["GO-F-05"]
-        ),
-        BaseTask(
-            id="GO-S-02", name="Préparation Armatures Poteaux/Voiles", discipline="GrosŒuvre",
-            sub_discipline="StructureBéton", resource_type="Ferrailleur", task_type="worker", base_duration=3,
-            min_equipment_needed={"Grue mobile": 1}, min_crews_needed=3,
-            predecessors=["GO-S-01"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="GO-S-03", name="Coffrage et Pose Armatures Poteaux/Voiles", discipline="GrosŒuvre",
-            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="hybrid", base_duration=4,
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=3,
-            predecessors=["GO-S-02"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="GO-S-04", name="Bétonnage Poteaux/Voiles", discipline="GrosŒuvre",
-            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="hybrid", base_duration=2,
-            min_equipment_needed={"Pump": 1, "Bétonier": 2}, min_crews_needed=3,
-            predecessors=["GO-S-03"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="GO-S-05", name="Préparation Armatures Planchers", discipline="GrosŒuvre",
-            sub_discipline="StructureBéton", resource_type="Ferrailleur", task_type="worker", base_duration=4,
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=3,
-            predecessors=["GO-S-04"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="GO-S-06", name="Coffrage et Pose Armatures Planchers", discipline="GrosŒuvre",
-            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="hybrid", base_duration=5,
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=3,
-            predecessors=["GO-S-05"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="GO-S-07", name="Bétonnage Planchers", discipline="GrosŒuvre",
-            sub_discipline="StructureBéton", resource_type="BétonArmé", task_type="hybrid", base_duration=3,
-            min_equipment_needed={"Pump": 1, "Bétonier": 2}, min_crews_needed=3,
-            predecessors=["GO-S-06"], repeat_on_floor=True
-        ),
-        
-        # STRUCTURE MÉTALLIQUE
-        BaseTask(
-            id="GO-S-08", name="Charpente Métallique", discipline="GrosŒuvre",
-            sub_discipline="StructureMétallique", resource_type="Charpentier", task_type="worker", base_duration=8,
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=3,
-            predecessors=["GO-S-07"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="GO-S-09", name="Assemblage Charpente", discipline="GrosŒuvre",
-            sub_discipline="StructureMétallique", resource_type="Charpentier", task_type="worker", base_duration=6,
-            min_equipment_needed={"Grue à tour": 1}, min_crews_needed=2,
-            predecessors=["GO-S-08"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="GO-S-10", name="Soudure Structure Métallique", discipline="GrosŒuvre",
-            sub_discipline="StructureMétallique", resource_type="Soudeur", task_type="worker", base_duration=4,
-            min_crews_needed=2, predecessors=["GO-S-09"], repeat_on_floor=True
-        ),
-    ],
+    # Check if user has any tasks
+    user_task_count = get_user_task_count(current_user_id)
     
-    "SecondŒuvre": [
-        BaseTask(
-            id="SO-01", name="Maçonnerie", discipline="SecondŒuvre",
-            sub_discipline="Cloisons", resource_type="Maçon", task_type="worker", base_duration=4,
-            min_equipment_needed={"Manito": 1}, min_crews_needed=3,
-            predecessors=["GO-S-07"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="SO-02", name="Cloisonnement", discipline="SecondŒuvre",
-            sub_discipline="Cloisons", resource_type="Plaquiste", task_type="worker", base_duration=4,
-            min_equipment_needed={"Manito": 1}, min_crews_needed=3,
-            predecessors=["GO-S-07"], repeat_on_floor=True
-        ),
-         BaseTask(
-            id="SO-03", name="Faux-plafond", discipline="SecondŒuvre",
-            sub_discipline="Faux-plafond", resource_type="Plaquiste", task_type="worker", base_duration=4,
-            min_equipment_needed={"Manito": 1}, min_crews_needed=3,
-            predecessors=["GO-S-07"], repeat_on_floor=True
-        ),
-         BaseTask(
-            id="SO-04", name="Carrelage", discipline="SecondŒuvre",
-            sub_discipline="Revêtements", resource_type="Carreleur-Marbrier", task_type="worker", base_duration=4,
-            min_equipment_needed={"Monte-charge": 1}, min_crews_needed=3,
-            predecessors=["SO-01"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="SO-05", name="Marbre", discipline="SecondŒuvre",
-            sub_discipline="Revêtements", resource_type="Carreleur-Marbrier", task_type="worker", base_duration=4,
-            min_equipment_needed={"Monte-charge": 1}, min_crews_needed=3,
-            predecessors=["SO-01"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="SO-06", name="Etanchéité Terrasses et Balcons", discipline="SecondŒuvre",
-            sub_discipline="Revêtements", resource_type="Étanchéiste", task_type="worker", base_duration=3,
-            min_crews_needed=2, predecessors=["SO-01"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="SO-07", name="Etanchéité des Sales de Bain", discipline="SecondŒuvre",
-            sub_discipline="Revêtements", resource_type="Étanchéiste", task_type="worker", base_duration=3,
-            min_crews_needed=2, predecessors=["SO-01"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="SO-08", name="Peinture Intérieure", discipline="SecondŒuvre",
-            sub_discipline="Revêtements", resource_type="Peintre", task_type="worker", base_duration=4,
-            min_crews_needed=2, predecessors=["SO-02"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="SO-09", name="Peinture Extérieure", discipline="SecondŒuvre",
-            sub_discipline="Revêtements", resource_type="Peintre", task_type="worker", base_duration=3,
-            min_equipment_needed={"Nacelle": 1}, min_crews_needed=2,
-            predecessors=["SO-08"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="SO-10", name="Installation Ascenseurs", discipline="SecondŒuvre",
-            sub_discipline="Menuiseries", resource_type="Ascensoriste", task_type="worker", base_duration=5,
-            min_crews_needed=2, predecessors=["SO-03"], repeat_on_floor=True
-        ),
-        BaseTask(
-            id="SO-11", name="Nettoyage Final", discipline="SecondŒuvre",
-            sub_discipline="Revêtements", resource_type="Agent de netoyage", task_type="worker", base_duration=2,
-            min_crews_needed=3, predecessors=["SO-09", "SO-10"], repeat_on_floor=True
-        ),
-    ]
-}
+    # Show empty state with import options
+    if user_task_count == 0:
+        show_empty_state(current_user_id, current_username, user_role)
+        return
+    
+    # User has tasks - show full management interface
+    show_task_management_interface(current_user_id, user_role)
+
+def show_task_management_interface(user_id, user_role):
+    """Show full task management interface"""
+    # Top action bar
+    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
+    
+    with col1:
+        search_term = st.text_input("🔍 Search tasks...", placeholder="Search by name, discipline, or resource type")
+    
+    with col2:
+        discipline_filter = st.multiselect("Discipline", disciplines, default=[], placeholder="All")
+    
+    with col3:
+        if st.button("➕ New", use_container_width=True, help="Create new task"):
+            st.session_state["creating_new_task"] = True
+            st.session_state["editing_task_id"] = None
+    
+    with col4:
+        if st.button("📥 Import", use_container_width=True, help="Import from templates"):
+            show_import_template_modal(user_id)
+    
+    with col5:
+        task_count = get_user_task_count(user_id)
+        st.metric("Your Tasks", task_count)
+    
+    # Load and display tasks
+    tasks = get_user_tasks_with_filters(user_id, search_term, discipline_filter)
+    
+    if not tasks:
+        st.info("🔍 No tasks match your search criteria. Try different filters or create a new task.")
+        return
+    
+    # Display tasks in professional table
+    display_task_table(tasks, user_id)
+    
+    # Task editor (appears when editing/creating)
+    if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
+        st.markdown("---")
+        with SessionLocal() as session:
+            display_task_editor(session, user_id)  # Added missing function call
+
+def display_task_table(tasks, user_id):
+    """Display tasks as a professional styled table with actions - SHOWS DURATION TYPE"""
+    if not tasks:
+        st.info("📭 No tasks found matching your criteria.")
+        return
+    
+    # Convert to DataFrame for nice display
+    task_data = []
+    for task in tasks:
+        # Determine duration display
+        if task.base_duration is None:
+            duration_display = "🔄 Calculated"
+            duration_tooltip = "Duration will be calculated by scheduling engine"
+        else:
+            duration_display = f"⏱️ {task.base_duration}d"
+            duration_tooltip = "Fixed duration (manual)"
+        
+        task_data.append({
+            "ID": task.id,
+            "Name": task.name,
+            "Discipline": task.discipline,
+            "Resource": task.resource_type,
+            "Duration": duration_display,
+            "Crews": task.min_crews_needed,
+            "Equipment": len(task.min_equipment_needed) if task.min_equipment_needed else 0,
+            "Predecessors": len(task.predecessors or []),
+            "Cross-Floor": len(task.cross_floor_dependencies or [])
+        })
+    
+    df = pd.DataFrame(task_data)
+    
+    # Display dataframe with custom column config
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "ID": st.column_config.NumberColumn("ID", width="small"),
+            "Name": st.column_config.TextColumn("Task Name", width="large"),
+            "Discipline": st.column_config.TextColumn("Discipline", width="medium"),
+            "Resource": st.column_config.TextColumn("Resource", width="medium"),
+            "Duration": st.column_config.TextColumn("Duration", width="small", 
+                                                  help="🔄 = Calculated by engine, ⏱️ = Fixed duration"),
+            "Crews": st.column_config.NumberColumn("Crews", width="small"),
+            "Equipment": st.column_config.NumberColumn("Equipment", width="small"),
+            "Predecessors": st.column_config.NumberColumn("Predecessors", width="small"),
+            "Cross-Floor": st.column_config.NumberColumn("Cross-Floor", width="small"),
+        }
+    )
+    
+    # Quick actions for each task
+    st.markdown("### 🛠️ Quick Actions")
+    cols = st.columns(4)
+    for idx, task in enumerate(tasks):
+        col = cols[idx % 4]
+        with col:
+            with st.container():
+                # Show duration type indicator
+                duration_badge = "🔄" if task.base_duration is None else "⏱️"
+                st.markdown(f"**{task.name}** {duration_badge}")
+                st.caption(f"{task.discipline} • {task.resource_type}")
+                if task.base_duration is not None:
+                    st.caption(f"Fixed: {task.base_duration}d")
+                else:
+                    st.caption("Calculated by engine")
+                
+                # Action buttons
+                btn_col1, btn_col2, btn_col3 = st.columns(3)
+                with btn_col1:
+                    if st.button("✏️", key=f"edit_{task.id}", help="Edit task", use_container_width=True):
+                        st.session_state["editing_task_id"] = task.id
+                        st.session_state["creating_new_task"] = False
+                        st.rerun()
+                with btn_col2:
+                    if st.button("📋", key=f"duplicate_{task.id}", help="Duplicate task", use_container_width=True):
+                        if duplicate_task(task, user_id):
+                            st.success("✅ Task duplicated!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to duplicate task")
+                with btn_col3:
+                    if st.button("🗑️", key=f"delete_{task.id}", help="Delete task", use_container_width=True):
+                        if st.session_state.get(f"confirm_delete_{task.id}"):
+                            if delete_task(task.id, user_id):
+                                st.success("✅ Task deleted!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to delete task")
+                        else:
+                            st.session_state[f"confirm_delete_{task.id}"] = True
+                            st.warning("Click again to confirm deletion")
+                st.divider()
+
+def show_empty_state(user_id, username, user_role):
+    """Show empty state with import options - ENHANCED VERSION"""
+    st.warning("🎯 No personal tasks found in your library.")
+    
+    # Show creation options
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### 🚀 Import Default Tasks")
+        st.markdown("""
+        - Get 50+ pre-configured tasks
+        - Mix of calculated and fixed durations
+        - Based on industry standards
+        - Fully customizable afterward
+        """)
+        if st.button("📥 Import Default Tasks", use_container_width=True, key="import_defaults_main"):
+            with st.spinner("Importing default construction tasks..."):
+                # FIX: Use database session
+                with SessionLocal() as session:
+                    created_count = copy_default_tasks_to_user(user_id, session)  # ← ADD SESSION
+                    if created_count > 0:
+                        st.success(f"✅ Imported {created_count} default tasks to your library!")
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        st.error("❌ No default tasks available to import")
+    
+    with col2:
+        st.markdown("#### 🆕 Start Fresh")
+        st.markdown("""
+        - Create tasks from scratch
+        - Choose calculated or fixed durations
+        - Build custom resource types
+        - Complete control
+        """)
+        if st.button("✨ Create First Task", use_container_width=True, key="create_first_main"):
+            st.session_state["creating_new_task"] = True
+            st.session_state["editing_task_id"] = None
+            st.rerun()
+    
+    st.markdown("---")
+    st.info("""
+    💡 **About Duration Types:**
+    - **🔄 Calculated**: Scheduling engine calculates duration based on quantities and productivity rates
+    - **⏱️ Fixed**: You set a specific duration that won't be changed by the engine
+    """)
+
+def display_task_editor(session, user_id):
+    """Comprehensive task editor with duration type selection"""
+    editing_task_id = st.session_state.get("editing_task_id")
+    creating_new = st.session_state.get("creating_new_task", False)
+    
+    if editing_task_id:
+        task = session.query(UserBaseTaskDB).filter_by(id=editing_task_id, user_id=user_id).first()
+        is_new = False
+        title = "✏️ Edit Task"
+        if not task:
+            st.error("Task not found")
+            return
+    else:
+        task = None
+        is_new = True
+        title = "➕ Create New Task"
+    
+    st.subheader(title)
+    
+    with st.form(f"task_editor_{user_id}"):
+        # Basic Information Section
+        st.markdown("### 📋 Basic Information")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            task_name = st.text_input(
+                "Task Name *", 
+                value=task.name if task else "",
+                placeholder="e.g., Concrete Foundation Work",
+                help="Descriptive name for the construction task"
+            )
+        with col2:
+            discipline = st.selectbox(
+                "Discipline *", 
+                disciplines,
+                index=disciplines.index(task.discipline) if task and task.discipline in disciplines else 0
+            )
+        with col3:
+            # ✅ FLEXIBLE: Free-text resource type input
+            current_resource = task.resource_type if task else "BétonArmée"
+            resource_type = st.text_input(
+                "Resource Type *",
+                value=current_resource,
+                placeholder="e.g., Topograph, Maçonnerie, etc.",
+                help="Enter any resource type. Users can create custom types."
+            )
+        
+        # Duration Configuration with Type Selection
+        st.markdown("### ⏱️ Duration Configuration")
+        
+        # Get current duration info
+        if task and task.base_duration is None:
+            current_duration_type = "calculated"
+            current_duration_value = None
+        else:
+            current_duration_type = "fixed" 
+            current_duration_value = float(task.base_duration) if task and task.base_duration else 1.0
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            duration_type = st.radio(
+                "Duration Type:",
+                options=["calculated", "fixed"],
+                format_func=lambda x: {
+                    "calculated": "🔄 Calculated by Scheduling Engine",
+                    "fixed": "⏱️ Fixed Duration (Manual)"
+                }[x],
+                index=0 if current_duration_type == "calculated" else 1,
+                help="""
+                **Calculated**: Scheduling engine will calculate duration based on quantities and productivity rates.
+                **Fixed**: You set a specific duration that won't be changed by the engine.
+                """
+            )
+        
+        with col2:
+            if duration_type == "fixed":
+                base_duration = st.number_input(
+                    "Fixed Duration (days) *",
+                    min_value=0.1, max_value=365.0, step=0.5,
+                    value=current_duration_value,
+                    help="Manual duration that won't be calculated by scheduling engine"
+                )
+            else:
+                base_duration = None
+                st.info("🔄 Duration will be calculated by scheduling engine based on quantities and productivity rates")
+        
+        # Resource Requirements
+        st.markdown("### 👥 Resource Requirements")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            min_crews_needed = st.number_input(
+                "Minimum Crews *",
+                min_value=1, max_value=50, step=1,
+                value=task.min_crews_needed if task and task.min_crews_needed else 1,
+                help="Number of crew teams required"
+            )
+        with col2:
+            delay = st.number_input(
+                "Delay (days)",
+                min_value=0, max_value=30, step=1,
+                value=task.delay if task and task.delay else 0,
+                help="Mandatory delay after predecessor completion"
+            )
+        with col3:
+            task_type = st.selectbox(
+                "Task Type",
+                ["worker", "equipment", "hybrid"],
+                index=["worker", "equipment", "hybrid"].index(task.task_type) 
+                if task and task.task_type else 0
+            )
+        
+        # Equipment Requirements
+        st.markdown("### 🚜 Equipment Requirements")
+        equipment_options = ["None", "Crane", "Excavator", "Concrete Pump", "Bulldozer", "Other"]
+        selected_equipment = st.multiselect(
+            "Required Equipment",
+            equipment_options,
+            default=[],
+            help="Select equipment needed for this task"
+        )
+        
+        # Convert to your equipment format
+        min_equipment_needed = {eq: 1 for eq in selected_equipment if eq != "None"}
+        
+        # Task Dependencies
+        st.markdown("### ⏩ Task Dependencies")
+        available_tasks = session.query(UserBaseTaskDB).filter(
+            UserBaseTaskDB.user_id == user_id,
+            UserBaseTaskDB.id != (task.id if task else None)
+        ).all()
+        
+        predecessor_options = [f"{t.name} ({t.discipline})" for t in available_tasks]
+        selected_predecessors = st.multiselect(
+            "Predecessor Tasks",
+            predecessor_options,
+            default=[],
+            help="Tasks that must complete before this one starts"
+        )
+        
+        # Convert back to task IDs for storage
+        predecessor_ids = []
+        for pred_name in selected_predecessors:
+            for t in available_tasks:
+                if f"{t.name} ({t.discipline})" == pred_name:
+                    predecessor_ids.append(t.id)
+                    break
+        
+        # Cross-Floor Configuration
+        st.markdown("### 🏢 Cross-Floor Configuration")
+        cross_floor_config = cross_floor_dependency_ui(task) if task else {}
+        
+        # Advanced Settings
+        with st.expander("⚙️ Advanced Settings"):
+            col1, col2 = st.columns(2)
+            with col1:
+                repeat_on_floor = st.checkbox(
+                    "Repeat on each floor",
+                    value=task.repeat_on_floor if task else True
+                )
+            with col2:
+                included = st.checkbox(
+                    "Include in scheduling",
+                    value=task.included if task else True,
+                    help="Uncheck to exclude this task from scheduling"
+                )
+        
+        # Form Actions
+        st.markdown("---")
+        
+        # Show summary of choices
+        if duration_type == "calculated":
+            st.info("🎯 **This task will have its duration calculated automatically by the scheduling engine**")
+        else:
+            st.info(f"🎯 **This task has a fixed duration of {base_duration} days**")
+        
+        col1, col2, col3 = st.columns([1, 1, 2])
+        with col1:
+            if st.form_submit_button("💾 Save Task", use_container_width=True):
+                if not task_name:
+                    st.error("❌ Task name is required")
+                elif not resource_type:
+                    st.error("❌ Resource type is required")
+                else:
+                    success = save_enhanced_task(
+                        session, task, is_new, user_id, task_name, discipline, 
+                        resource_type, base_duration, min_crews_needed, delay,
+                        min_equipment_needed, predecessor_ids, cross_floor_config,
+                        task_type, repeat_on_floor, included
+                    )
+                    if success:
+                        st.session_state.pop("editing_task_id", None)
+                        st.session_state.pop("creating_new_task", None)
+                        st.rerun()
+        with col2:
+            if st.form_submit_button("❌ Cancel", use_container_width=True):
+                st.session_state.pop("editing_task_id", None)
+                st.session_state.pop("creating_new_task", None)
+                st.rerun()
+        with col3:
+            if task and st.form_submit_button("📋 Save as Copy", use_container_width=True):
+                success = duplicate_task(task, user_id, modifications={
+                    'name': f"{task_name} (Copy)",
+                    'base_duration': base_duration,
+                    'min_crews_needed': min_crews_needed,
+                    'resource_type': resource_type
+                })
+                if success:
+                    st.session_state.pop("editing_task_id", None)
+                    st.session_state.pop("creating_new_task", None)
+                    st.rerun()
+
+def debug_task_system():
+    """Debug function to check what's happening with tasks"""
+    with SessionLocal() as session:
+        # Check different types of tasks
+        total_tasks = session.query(UserBaseTaskDB).count()
+        system_tasks = session.query(UserBaseTaskDB).filter_by(created_by_user=False).count()
+        user_tasks = session.query(UserBaseTaskDB).filter_by(created_by_user=True).count()
+        
+        st.write(f"🔍 DEBUG - Total tasks in DB: {total_tasks}")
+        st.write(f"🔍 DEBUG - System default tasks: {system_tasks}")
+        st.write(f"🔍 DEBUG - User custom tasks: {user_tasks}")
+        
+        # Show some example tasks
+        example_tasks = session.query(UserBaseTaskDB).limit(5).all()
+        for task in example_tasks:
+            st.write(f" - {task.name} (User: {task.user_id}, System: {not task.created_by_user})")
+
+def create_default_tasks_now():
+    """One-time function to create default tasks in database"""
+    st.subheader("🚀 Create Default Tasks Now")
+    
+    current_user_id = st.session_state["user"]["id"]
+    
+    if st.button("🎯 Create Default Construction Tasks in Database", type="primary"):
+        try:
+            with st.spinner("Creating default construction tasks from defaults.py..."):
+                # Import the function
+                from backend.database_operations import create_default_tasks_from_defaults_py
+                
+                # Create system default tasks (with user_id=None)
+                with SessionLocal() as session:
+                    user_count = copy_default_tasks_to_user(current_user_id, session)
+                
+                if created_count > 0:
+                    st.success(f"✅ Created {created_count} system default tasks!")
+                    # Now copy them to current user
+                    from backend.database_operations import copy_default_tasks_to_user
+                    user_count = copy_default_tasks_to_user(current_user_id)
+                    if user_count > 0:
+                        st.success(f"✅ Copied {user_count} tasks to your personal library!")
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        st.info("Tasks created but couldn't copy to user (might already exist)")
+                else:
+                    st.error("❌ Could not create default tasks") 
+        except Exception as e:
+            st.error(f"❌ Error: {e}")
+            import traceback
+            st.code(traceback.format_exc())
