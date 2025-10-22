@@ -88,7 +88,7 @@ class UserBaseTaskDB(Base):
     __tablename__ = "user_base_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
-    task_id= Column(String(50), nullable=False)
+    task_id = Column(String(50), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(100), nullable=False, index=True)
     discipline = Column(String(50), nullable=False)
