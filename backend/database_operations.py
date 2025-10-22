@@ -416,3 +416,42 @@ def get_user_by_username(username: str):
     except Exception as e:
         logger.error(f"Error getting user {username}: {e}")
         return None
+def migrate_fix_task_type_constraint():
+    """Fix the task_type constraint to include 'supervision'"""
+    try:
+        with SessionLocal() as session:
+            with session.bind.connect() as conn:
+                # Drop the old constraint
+                conn.execute(sa.text("""
+                    ALTER TABLE user_base_tasks 
+                    DROP CONSTRAINT IF EXISTS valid_task_type
+                """))
+                
+                # Create new constraint with 'supervision'
+                conn.execute(sa.text("""
+                    ALTER TABLE user_base_tasks 
+                    ADD CONSTRAINT valid_task_type 
+                    CHECK (task_type IN ('worker', 'equipment', 'hybrid', 'supervision'))
+                """))
+                
+                conn.commit()
+            logger.info("✅ Updated task_type constraint to include 'supervision'")
+            return True
+    except Exception as e:
+        logger.error(f"❌ Failed to update task_type constraint: {e}")
+        return False
+    
+def check_and_migrate_database():
+    """Check if database needs migration"""
+    try:
+        with SessionLocal() as session:
+            # Fix the constraint first
+            if not migrate_fix_task_type_constraint():
+                return False
+                
+            # Rest of your migration logic...
+            session.execute(sa.text("SELECT 1"))
+            return True
+    except Exception as e:
+        logger.error(f"❌ Database check failed: {e}")
+        return False

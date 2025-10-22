@@ -28,7 +28,6 @@ MANIFEST
 # --------------------------
 # Virtual environments
 # --------------------------
-.env
 .venv/
 env/
 venv/
@@ -45,7 +44,7 @@ venv.bak/
 *.db-journal
 
 # --------------------------
-# Application data directories (keep structure)
+# Application data directories (keep structure, but ignore contents)
 # --------------------------
 outputs/**
 backups/**
@@ -58,13 +57,13 @@ templates/*.xls
 !templates/.gitkeep
 
 # --------------------------
-# Environment variables
+# Environment variables / secrets
 # --------------------------
 .env
 .env.local
 .env.production
 .env.development
-streamlit-secrets.toml
+.streamlit/secrets.toml
 
 # --------------------------
 # IDE / Editor
@@ -90,7 +89,7 @@ Thumbs.db
 # --------------------------
 # Streamlit
 # --------------------------
-.streamlit/
+.streamlit/config.toml  # Optional, ignore local config
 
 # --------------------------
 # Docker
@@ -111,8 +110,7 @@ docker-compose.override.yml
 # --------------------------
 htmlcov/
 .coverage
-.coverage.*
-.coverage*
+.coverage.* 
 .pytest_cache/
 
 # --------------------------
@@ -135,4 +133,4 @@ htmlcov/
 # Local development / sensitive files
 # --------------------------
 local_settings.py
-instance/
+instancegi

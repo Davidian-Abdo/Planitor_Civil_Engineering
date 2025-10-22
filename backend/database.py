@@ -7,7 +7,8 @@ import sys
 from contextlib import contextmanager
 from typing import Generator, Dict, Any
 from backend.db_models import Base
-from sqlalchemy import create_engine, event, text, exc
+import streamlit as st
+from sqlalchemy import create_engine, event, text, exc, inspect
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from sqlalchemy.pool import QueuePool, StaticPool
 
@@ -32,18 +33,18 @@ def get_discipline_zone_config(session, project_id):
     cfg = session.query(DisciplineZoneConfigDB).filter_by(project_id=project_id).first()
     return cfg.config_data if cfg else {}
 
+logger = logging.getLogger(__name__)
 
 class DatabaseConfig:
     """
-    Enhanced database configuration with validation and environment-specific settings
+    Enhanced database configuration compatible with Streamlit secrets
     """
     
     def __init__(self):
-        self.env = os.getenv("ENVIRONMENT", "development").lower()
+        self.env = st.secrets.get("ENVIRONMENT", "development").lower()
         self._validate_environment()
         
     def _validate_environment(self):
-        """Validate environment and set appropriate defaults"""
         valid_environments = ["development", "testing", "production"]
         if self.env not in valid_environments:
             logger.warning(f"Invalid environment '{self.env}', defaulting to 'development'")
@@ -51,42 +52,30 @@ class DatabaseConfig:
     
     @property
     def url(self) -> str:
-        """Get database URL based on environment"""
+        """Get database URL"""
         if self.env == "testing":
             return "sqlite:///:memory:"
         
-        # PostgreSQL configuration
-        user = os.getenv("DB_USER", "postgres")
-        password = self._get_password()
-        host = os.getenv("DB_HOST", "localhost")
-        port = os.getenv("DB_PORT", "5432")
-        name = os.getenv("DB_NAME", "construction_db")
+        # Use Streamlit secrets
+        user = st.secrets["DB_USER"]
+        password = st.secrets["DB_PASSWORD"]
+        host = st.secrets["DB_HOST"]
+        port = st.secrets["DB_PORT"]
+        name = st.secrets["DB_NAME"]
         
         return f"postgresql://{user}:{password}@{host}:{port}/{name}"
-    
-    def _get_password(self) -> str:
-        """Get database password with security warnings"""
-        password = os.getenv("DB_PASSWORD")
-        if not password:
-            if self.env == "production":
-                raise ValueError("DB_PASSWORD environment variable required in production")
-            else:
-                password = "postgres"
-                logger.warning("🚨 USING DEFAULT DATABASE PASSWORD - NOT SUITABLE FOR PRODUCTION!")
-        return password
-    
+   
     @property
-    def engine_config(self) -> Dict[str, Any]:
-        """Get SQLAlchemy engine configuration based on environment"""
+    def engine_config(self):
+        """SQLAlchemy engine config"""
         base_config = {
-            "echo": os.getenv("DB_ECHO", "false").lower() == "true",
+            "echo": False,
             "pool_pre_ping": True,
             "connect_args": {
                 "connect_timeout": 10,
                 "application_name": f"construction_app_{self.env}"
             }
-        }
-        
+            }
         if self.env == "testing":
             base_config.update({
                 "poolclass": StaticPool,
@@ -95,12 +84,11 @@ class DatabaseConfig:
         else:
             base_config.update({
                 "poolclass": QueuePool,
-                "pool_size": int(os.getenv("DB_POOL_SIZE", "5")),
-                "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "10")),
+                "pool_size": 5,
+                "max_overflow": 10,
                 "pool_timeout": 30,
-                "pool_recycle": 1800,  # 30 minutes
-            })
-        
+                "pool_recycle": 1800
+             })
         return base_config
 
 class DatabaseMetrics:
