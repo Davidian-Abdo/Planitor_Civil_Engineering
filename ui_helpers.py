@@ -709,13 +709,15 @@ def show_empty_state(user_id, username, user_role):
         """)
         if st.button("📥 Import Default Tasks", use_container_width=True, key="import_defaults_main"):
             with st.spinner("Importing default construction tasks..."):
-                created_count = copy_default_tasks_to_user(user_id)
-                if created_count > 0:
-                    st.success(f"✅ Imported {created_count} default tasks to your library!")
-                    st.balloons()
-                    st.rerun()
-                else:
-                    st.error("❌ No default tasks available to import")
+                # FIX: Use database session
+                with SessionLocal() as session:
+                    created_count = copy_default_tasks_to_user(user_id, session)  # ← ADD SESSION
+                    if created_count > 0:
+                        st.success(f"✅ Imported {created_count} default tasks to your library!")
+                        st.balloons()
+                        st.rerun()
+                    else:
+                        st.error("❌ No default tasks available to import")
     
     with col2:
         st.markdown("#### 🆕 Start Fresh")
@@ -977,7 +979,8 @@ def create_default_tasks_now():
                 from backend.database_operations import create_default_tasks_from_defaults_py
                 
                 # Create system default tasks (with user_id=None)
-                created_count = create_default_tasks_from_defaults_py()
+                with SessionLocal() as session:
+                    user_count = copy_default_tasks_to_user(current_user_id, session)
                 
                 if created_count > 0:
                     st.success(f"✅ Created {created_count} system default tasks!")
