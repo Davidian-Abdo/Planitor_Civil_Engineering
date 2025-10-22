@@ -34,7 +34,7 @@ def emergency_fix_null_duration():
                 ALTER TABLE user_base_tasks 
                 DROP CONSTRAINT IF EXISTS user_base_tasks_base_duration_check
             """))
-            logger.info("✅ Step 2: Dropped old constraint")
+            logger.info("✅ Step 2: TESTTTTTTTTDropped old constraint")
             
             # 3. Drop new constraint if exists (to avoid conflicts)
             conn.execute(text("""
