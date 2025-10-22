@@ -240,61 +240,7 @@ def get_user_tasks_with_filters(user_id, search_term="", discipline_filter=None,
         return []
 
 # ✅ NEW: Migration function for sub_discipline column
-def migrate_remove_restrictive_constraints():
-    """Remove the restrictive discipline and resource_type constraints"""
-    try:
-        with SessionLocal() as session:
-            with session.bind.connect() as conn:
-                # Drop the old constraints if they exist
-                conn.execute(sa.text("""
-                    ALTER TABLE user_base_tasks 
-                    DROP CONSTRAINT IF EXISTS valid_discipline
-                """))
-                conn.execute(sa.text("""
-                    ALTER TABLE user_base_tasks 
-                    DROP CONSTRAINT IF EXISTS valid_resource_type
-                """))
-                conn.execute(sa.text("""
-                    ALTER TABLE user_base_tasks 
-                    DROP CONSTRAINT IF EXISTS valid_task_type
-                """))
-                
-                # Create new constraint with 'supervision'
-                conn.execute(sa.text("""
-                    ALTER TABLE user_base_tasks 
-                    ADD CONSTRAINT valid_task_type 
-                    CHECK (task_type IN ('worker', 'equipment', 'hybrid', 'supervision'))
-                """))
-                conn.commit()
-            logger.info("✅ Removed restrictive constraints")
-            return True
-    except Exception as e:
-        logger.error(f"❌ Failed to remove constraints: {e}")
-        return False
 
-def check_and_migrate_database():
-    """Simplified database check - skip complex migration"""
-    try:
-        with SessionLocal() as session:
-            # Just verify basic database connectivity
-            session.execute(sa.text("SELECT 1"))
-            
-            # Check if sub_discipline column exists (simple version)
-            from sqlalchemy import inspect
-            inspector = inspect(session.bind)
-            columns = [col['name'] for col in inspector.get_columns('user_base_tasks')]
-            
-            if 'sub_discipline' not in columns:
-                logger.info("🔄 sub_discipline column missing, but skipping complex migration")
-                # Just return True to continue - we'll handle this later
-                return True
-            else:
-                logger.info("✅ sub_discipline column exists")
-                return True
-                
-    except Exception as e:
-        logger.error(f"❌ Database check failed: {e}")
-        return False
 def delete_task(task_id: int, user_id: int) -> bool:
     """
     Delete a task by ID, ensuring it belongs to the user
