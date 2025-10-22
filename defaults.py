@@ -274,7 +274,7 @@ BASE_TASKS = {
         ),
         BaseTask(
             id="PRE-03", name="Levé Topographique Initial", discipline="Préliminaires",
-            sub_discipline="PréparationTerrain", resource_type="Topographe", predecessors=["PRE-01"], 
+            sub_discipline="PréparationTerrain", resource_type="Topographe", task_type="supervision", predecessors=["PRE-01"], 
             base_duration=2, repeat_on_floor=False, min_crews_needed=1
         ),
     ],
