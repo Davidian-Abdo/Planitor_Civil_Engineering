@@ -18,7 +18,7 @@ def save_enhanced_task(session, task, is_new, user_id, name,task_id, discipline,
         if is_new:
             new_task = UserBaseTaskDB(
                 user_id=user_id,
-                task_id=task_id,
+                base_task_id=task_id,
                 name=name,
                 discipline=discipline,
                 sub_discipline=sub_discipline,  # ✅ NEW: Include sub_discipline
@@ -39,6 +39,7 @@ def save_enhanced_task(session, task, is_new, user_id, name,task_id, discipline,
         else:
             # Update existing task
             task.name = name
+            task.base_task_id=task_id
             task.discipline = discipline
             task.sub_discipline = sub_discipline  # ✅ NEW: Update sub_discipline
             task.resource_type = resource_type
@@ -93,7 +94,7 @@ def copy_default_tasks_to_user(user_id: int, session) -> int:
                     
                     # Create system task (created_by_user=False)
                     system_task = UserBaseTaskDB(
-                        task_id = getattr(base_task, 'task_id', 'Unknown id'),
+                        base_task_id = getattr(base_task, 'id', 'Unknown id'),
                         user_id=admin_user.id,  # Owned by admin
                         name=getattr(base_task, 'name', 'Unknown Task'),
                         discipline=discipline,
@@ -138,7 +139,7 @@ def copy_default_tasks_to_user(user_id: int, session) -> int:
                 
             # Create user copy of system task
             user_task = UserBaseTaskDB(
-                task_id = system_task.task_id,
+                base_task_id = system_task.base_task_id,
                 user_id=user_id,
                 name=system_task.name,
                 discipline=system_task.discipline,
@@ -191,15 +192,38 @@ def create_default_tasks_from_defaults_py(user_id=None):
     except Exception as e:
         logger.error(f"Error in create_default_tasks_from_defaults_py: {e}")
         return 0
-def duplicate_task(original_task, user_id, modifications=None):
-    """Duplicate a task with optional modifications - INCLUDES sub_discipline"""
+
+def duplicate_task(original_task, user_id, new_stable_id=None, modifications=None):
+    """
+    Duplicate a task with optional modifications and a user-defined stable ID.
+    - Includes sub_discipline
+    - Validates unique stable_id
+    - Supports optional modifications
+    """
+    from sqlalchemy.exc import IntegrityError
+    import re
+
     try:
         with SessionLocal() as session:
+            # ✅ Validate new_stable_id
+            if not new_stable_id or not new_stable_id.strip():
+                raise ValueError("New task ID cannot be empty.")
+            
+            if not re.match(r"^[A-Za-z0-9_-]+$", new_stable_id):
+                raise ValueError("please enter a valid id.")
+            
+            # ✅ Check for duplicates
+            existing = session.query(UserBaseTaskDB).filter_by(user_id=user_id, stable_id=new_stable_id).first()
+            if existing:
+                raise ValueError(f"Task ID '{new_stable_id}' already exists for this user.")
+
+            # ✅ Create duplicate
             new_task = UserBaseTaskDB(
                 user_id=user_id,
+                base_task_id=new_stable_id,  # <<–– user-defined logical ID
                 name=modifications.get('name', f"{original_task.name} (Copy)") if modifications else f"{original_task.name} (Copy)",
                 discipline=original_task.discipline,
-                sub_discipline=original_task.sub_discipline,  # ✅ NEW: Copy sub_discipline
+                sub_discipline=original_task.sub_discipline,
                 resource_type=original_task.resource_type,
                 task_type=original_task.task_type,
                 base_duration=modifications.get('base_duration', original_task.base_duration) if modifications else original_task.base_duration,
@@ -212,13 +236,23 @@ def duplicate_task(original_task, user_id, modifications=None):
                 applies_to_floors=original_task.applies_to_floors,
                 created_by_user=True
             )
+
             session.add(new_task)
             session.commit()
+
             sub_disc_info = f" (Sub: {original_task.sub_discipline})" if original_task.sub_discipline else ""
-            logger.info(f"✅ Task duplicated: {new_task.name}{sub_disc_info}")
+            logger.info(f"✅ Task duplicated successfully: {new_task.stable_id} - {new_task.name}{sub_disc_info}")
             return True
+
+    except IntegrityError as e:
+        session.rollback()
+        logger.error(f"❌ Integrity error while duplicating task: {e}")
+        return False
+    except ValueError as e:
+        logger.warning(f"⚠️ Validation failed: {e}")
+        return False
     except Exception as e:
-        logger.error(f"❌ Failed to duplicate task: {e}")
+        logger.exception(f"❌ Unexpected error duplicating task: {e}")
         return False
 
 # ✅ NEW: Add filtering by sub_discipline
