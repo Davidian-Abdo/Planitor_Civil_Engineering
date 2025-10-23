@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from backend.database import SessionLocal
 import json
+import logging
+from datetime import datetime
 from sqlalchemy import exists
 from backend.db_models import UserBaseTaskDB
 from defaults import BASE_TASKS,workers,equipment, disciplines
@@ -9,6 +11,9 @@ from backend.database_operations import (
     copy_default_tasks_to_user, save_enhanced_task, duplicate_task, 
     delete_task, get_user_tasks_with_filters, get_user_task_count
 )
+logger = logging.getLogger(__name__)
+
+
 def enhanced_task_management():
     """Professional task management with auto-creation of default tasks"""
     st.subheader("📝 Construction Task Library")
@@ -34,42 +39,69 @@ def enhanced_task_management():
     # User has tasks - show full management interface
     show_task_management_interface(current_user_id, user_role)
 
-def reset_user_tasks_to_defaults(user_id):
-    """Reset all default tasks for a user without duplicates"""
-    with SessionLocal() as session:
-        # Get existing stable IDs for this user
-        existing_ids = {
-            t.base_task_id for t in session.query(UserBaseTaskDB)
-            .filter(UserBaseTaskDB.user_id == user_id)
-            .all()
-        }
+def reset_user_tasks_to_default(user_id: int, session: Session):
+    """
+    Reset a user's tasks to default BASE_TASKS.
 
+    Steps:
+    1. Delete existing user-created tasks.
+    2. Re-insert defaults with proper JSON encoding for min_equipment_needed.
+    3. Commit and log results.
+    """
+    try:
+        logger.info(f"🔄 Resetting tasks for user {user_id} to defaults...")
+
+        # Delete all tasks for this user
+        deleted = session.query(UserBaseTaskDB).filter(UserBaseTaskDB.user_id == user_id).delete()
+        session.commit()
+        logger.info(f"🗑️ Deleted {deleted} existing user tasks")
+
+        # Insert default tasks
         new_tasks = []
-        for discipline, task_list in BASE_TASKS.items():
-            for base_task in task_list:
-                if base_task.id not in existing_ids:
-                    new_task = UserBaseTaskDB(
-                        user_id=user_id,
-                        base_task_id=base_task.id,
-                        name=base_task.name,
-                        discipline=base_task.discipline,
-                        sub_discipline=base_task.sub_discipline,
-                        resource_type=base_task.resource_type,
-                        task_type=base_task.task_type,
-                        base_duration=base_task.base_duration,
-                        min_crews_needed=getattr(base_task, "min_crews_needed", 1),
-                        min_equipment_needed=getattr(base_task, "min_equipment_needed", {}),
-                        predecessors=base_task.predecessors,
-                        repeat_on_floor=getattr(base_task, "repeat_on_floor", True),
-                        created_by_user=False
-                    )
-                    new_tasks.append(new_task)
+        for discipline, tasks in BASE_TASKS.items():
+            for t in tasks:
+                # Convert tuples to JSON-safe keys
+                safe_equipment = {}
+                for k, v in t.get("min_equipment_needed", {}).items():
+                    key = json.dumps(k) if isinstance(k, (tuple, list)) else str(k)
+                    safe_equipment[key] = v
 
-        if new_tasks:
-            session.add_all(new_tasks)
-            session.commit()
-            return len(new_tasks)
-        return 0
+                new_task = UserBaseTaskDB(
+                    user_id=user_id,
+                    base_task_id=t.get("id"),
+                    name=t["name"],
+                    discipline=discipline,
+                    sub_discipline=t.get("sub_discipline"),
+                    resource_type=t.get("resource_type"),
+                    task_type=t.get("task_type"),
+                    base_duration=t.get("base_duration"),
+                    min_crews_needed=t.get("min_crews_needed", 0),
+                    min_equipment_needed=json.dumps(safe_equipment),
+                    predecessors=t.get("predecessors"),
+                    repeat_on_floor=t.get("repeat_on_floor", False),
+                    included=True,
+                    delay=t.get("delay", 0),
+                    cross_floor_dependencies=t.get("cross_floor_dependencies", False),
+                    applies_to_floors=t.get("applies_to_floors"),
+                    max_duration=t.get("max_duration"),
+                    max_crews=t.get("max_crews"),
+                    created_by_user=False,
+                    creator_id=None,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                new_tasks.append(new_task)
+
+        session.add_all(new_tasks)
+        session.commit()
+
+        logger.info(f"✅ Reset completed — {len(new_tasks)} default tasks restored for user {user_id}")
+        return len(new_tasks)
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Failed to reset tasks: {e}")
+        raise
 def show_task_management_interface(user_id, user_role):
     """
     Top-level management UI.
@@ -103,15 +135,19 @@ def show_task_management_interface(user_id, user_role):
             st.experimental_rerun()
 
     with col5:
-        if st.button("🔄 Reset to Default Tasks", width="stretch"):
-            # attempt to add only missing defaults by base_task_id (implementation below)
+        st.markdown("---")
+        st.subheader("♻️ Reset User Task Library")
+        if st.button("Reset to Default Tasks", type="secondary", use_container_width=True):
+            user_id = st.session_state["user"]["id"]
             with SessionLocal() as session:
-                count = reset_user_tasks_to_defaults(user_id)  # ensure this function exists and uses base_task_id checks
-            if count:
-                st.success(f"✅ Imported {count} default tasks!")
-            else:
-                st.info("All default tasks already exist in your library.")
-            st.experimental_rerun()
+                with st.spinner("🔄 Resetting your task library to defaults..."):
+                    try:
+                        restored = reset_user_tasks_to_default(user_id, session)
+                        st.success(f"✅ Successfully restored {restored} default tasks!")
+                        st.session_state["user_tasks_used"] = False
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Reset failed: {e}")
 
     with col6:
         task_count = get_user_task_count(user_id)
