@@ -71,7 +71,7 @@ def reset_user_tasks_to_defaults(user_id):
 def show_task_management_interface(user_id, user_role):
     """Display full task management interface with search, filters, and task actions"""
     # Top action bar
-    col1, col2, col3, col4, col5, col6 = st.columns([3, 1, 1, 1, 1, 1])
+    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 1, 1, 1, 1])
 
     with col1:
         search_term = st.text_input("🔍 Search tasks...", placeholder="Search by name, discipline, or resource type")
