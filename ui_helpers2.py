@@ -71,166 +71,200 @@ def reset_user_tasks_to_defaults(user_id):
             return len(new_tasks)
         return 0
 def show_task_management_interface(user_id, user_role):
-    """Display full task management interface with search, filters, and task actions"""
+    """
+    Top-level management UI.
+    - search + discipline filtering
+    - selection box + duplicate dialog (asks for new stable ID)
+    - reset to defaults (no duplicates)
+    """
     # Top action bar
-    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 1, 1, 1, 1])
+    col1, col2, col3, col4, col5, col6 = st.columns([3, 1, 1, 1, 1, 1])
 
     with col1:
-        search_term = st.text_input("🔍 Search tasks...", placeholder="Search by name, discipline, or resource type")
+        search_term = st.text_input("🔍 Search tasks...", placeholder="Search by name, discipline, or resource type", key="task_search")
 
     with col2:
-        discipline_filter = st.multiselect("Discipline", disciplines, default=[], placeholder="All")
+        discipline_filter = st.multiselect("Discipline", options=disciplines, default=[], key="task_discipline_filter")
 
     with col3:
-        if st.button("➕ New", use_container_width=True, help="Create new task"):
+        if st.button("➕ New", width="stretch", help="Create new task"):
             st.session_state["creating_new_task"] = True
             st.session_state["editing_task_id"] = None
+            st.experimental_rerun()
 
     with col4:
-        if st.button("📥 Import", use_container_width=True, help="Import from templates"):
-            show_import_template_modal(user_id)
+        if st.button("📥 Import defaults", width="stretch", help="Import default tasks into your library"):
+            with SessionLocal() as session:
+                copied = copy_default_tasks_to_user(user_id, session)
+            if copied:
+                st.success(f"✅ Imported {copied} default tasks.")
+            else:
+                st.info("No new default tasks were added (they may already exist).")
+            st.experimental_rerun()
+
     with col5:
-        if st.button("🔄 Reset to Default Tasks", use_container_width=True):
-            count = reset_user_tasks_to_defaults(user_id)
+        if st.button("🔄 Reset to Default Tasks", width="stretch"):
+            # attempt to add only missing defaults by base_task_id (implementation below)
+            with SessionLocal() as session:
+                count = reset_user_tasks_to_defaults(user_id)  # ensure this function exists and uses base_task_id checks
             if count:
                 st.success(f"✅ Imported {count} default tasks!")
             else:
                 st.info("All default tasks already exist in your library.")
-            st.rerun()
+            st.experimental_rerun()
+
     with col6:
         task_count = get_user_task_count(user_id)
         st.metric("Your Tasks", task_count)
 
-    # Task editor (create or edit)
-    if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
-        st.markdown("---")
-        with SessionLocal() as session:
-            display_task_editor(session, user_id)
-    # Load and display tasks
+    # Load tasks and render table
     tasks = get_user_tasks_with_filters(user_id, search_term, discipline_filter)
-
     if not tasks:
         st.info("🔍 No tasks match your search criteria. Try different filters or create a new task.")
+    else:
+        display_task_table(tasks, user_id)
+
+    # If duplicate requested (set by display_task_table), show the duplication form
+    dup_for = st.session_state.get("duplicate_requested_for")
+    if dup_for:
+        # fetch object
+        with SessionLocal() as session:
+            original = session.query(UserBaseTaskDB).filter_by(id=dup_for, user_id=user_id).first()
+        if original:
+            st.markdown("---")
+            st.subheader(f"📋 Duplicate Task: {original.name}")
+            with st.form(f"duplicate_form_{dup_for}"):
+                new_stable_id = st.text_input("New Stable Task ID (alphanumeric, -, _ allowed)", key=f"dup_id_{dup_for}")
+                new_name = st.text_input("New Name (optional)", value=f"{original.name} (Copy)", key=f"dup_name_{dup_for}")
+                submit = st.form_submit_button("Duplicate", use_container_width=False)
+                if submit:
+                    # Call backend duplicate function (which performs validation / uniqueness check)
+                    ok = duplicate_task_backend(original_task=original, user_id=user_id, new_stable_id=new_stable_id, modifications={"name": new_name})
+                    if ok:
+                        st.success(f"✅ Task duplicated as {new_stable_id}")
+                        st.session_state.pop("duplicate_requested_for", None)
+                        st.experimental_rerun()
+                    else:
+                        st.error("❌ Could not duplicate task (see logs).")
+        else:
+            st.error("Original task not found (it may have been removed).")
+            st.session_state.pop("duplicate_requested_for", None)
+
+
+def _normalize_equipment_dict(equip):
+    """
+    Ensure equipment dict is JSON-serializable: convert tuple keys -> joined strings,
+    ensure integer counts.
+    """
+    if not equip:
+        return {}
+    safe = {}
+    try:
+        for k, v in (equip.items() if isinstance(equip, dict) else []):
+            key = "|".join(k) if isinstance(k, (list, tuple)) else str(k)
+            try:
+                safe[key] = int(v) if v is not None else 0
+            except Exception:
+                safe[key] = 0
+        return safe
+    except Exception:
+        logger.exception("Failed to normalize equipment dict, returning empty dict.")
+        return {}
+
+# ---------------------------
+def display_task_table(tasks, user_id):
+    """
+    Professional table: shows stable ID (base_task_id) and uses DB PK for internal actions.
+    - tasks: list[UserBaseTaskDB]
+    """
+    if not tasks:
+        st.info("📭 No tasks found matching your criteria.")
         return
 
-    # Display tasks table with actions
-    display_task_table(tasks, user_id)
+    # Build DataFrame with stable id shown prominently
+    rows = []
+    for t in tasks:
+        duration_display = "🔄 Calculated" if t.base_duration is None else f"⏱️ {t.base_duration}d"
+        equipment_count = len(t.min_equipment_needed) if isinstance(t.min_equipment_needed, dict) else 0
+        rows.append({
+            "DB_PK": t.id,                      # internal key (hidden from user)
+            "Stable ID": getattr(t, "base_task_id", "") or "",
+            "Name": t.name,
+            "Discipline": t.discipline,
+            "Sub": t.sub_discipline or "",
+            "Resource": t.resource_type,
+            "Duration": duration_display,
+            "Crews": t.min_crews_needed,
+            "Equipment (#types)": equipment_count,
+            "Predecessors": len(t.predecessors or []),
+        })
 
+    df = pd.DataFrame(rows)
 
-def safe_display_equipment(equipment_data):
-    """Convert equipment dict (possibly with tuple keys) into a readable string."""
-    if not equipment_data:
-        return "—"
-    try:
-        parts = []
-        for key, value in equipment_data.items():
-            if isinstance(key, tuple):
-                label = " or ".join(str(k) for k in key)
-            else:
-                label = str(key)
-            parts.append(f"{label}: {value}")
-        return "; ".join(parts)
-    except Exception:
-        return str(equipment_data)
+    # Show a polished table with stable id visible; hide the DB_PK column visually by not showing it in UI
+    # We still keep DB_PK in the dataframe object for mapping selection indices -> DB PKs.
+    # Use st.dataframe to show the user-facing part:
+    st.dataframe(
+        df.drop(columns=["DB_PK"]),
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Stable ID": st.column_config.TextColumn("Stable ID", width="small"),
+            "Name": st.column_config.TextColumn("Task Name", width="large"),
+            "Discipline": st.column_config.TextColumn("Discipline", width="medium"),
+            "Sub": st.column_config.TextColumn("Sub-discipline", width="small"),
+            "Resource": st.column_config.TextColumn("Resource", width="small"),
+            "Duration": st.column_config.TextColumn("Duration", width="small"),
+            "Crews": st.column_config.NumberColumn("Crews", width="small"),
+            "Equipment (#types)": st.column_config.NumberColumn("Equipment", width="small"),
+            "Predecessors": st.column_config.NumberColumn("Predecessors", width="small"),
+        }
+    )
 
-def display_task_table(tasks,user_id):
-    """Display user tasks with full management (duplicate/delete) and correct equipment display."""
-    try:
-        if not tasks:
-            st.info("📭 No tasks found.")
-            return
+    # For action widgets we need a reliable selection mechanism:
+    # Create a mapping label -> DB_PK so buttons below can act on selection.
+    options = [f"{r['Stable ID'] or '(no-id)'} — {r['Name']}" for r in rows]
+    pk_map = {options[i]: rows[i]["DB_PK"] for i in range(len(options))}
 
-        # Create DataFrame for display
-        df = pd.DataFrame([
-            {
-                "Task ID": t.base_task_id,
-                "Name": t.name,
-                "Discipline": t.discipline,
-                "Sub-Discipline": t.sub_discipline or "-",
-                "Resource Type": t.resource_type,
-                "Duration": t.base_duration or "—",
-                "Min Crews Needed": t.min_crews_needed or "—",
-                "Min Equipment Needed": safe_display_equipment(t.min_equipment_needed)
-            }
-            for t in tasks
-        ])
+    st.markdown("### 🛠️ Quick Actions")
+    selected_label = st.selectbox("Select a task to act on", options, index=0 if options else -1, key="task_selectbox")
 
-        st.markdown("### 📋 Your Tasks")
-        selected_index = st.selectbox("Select a task to manage:", options=df.index, format_func=lambda i: f"{df.iloc[i]['Name']} ({df.iloc[i]['Task ID']})")
+    if selected_label:
+        selected_pk = pk_map[selected_label]
+        # load the selected full object for display/context
+        with SessionLocal() as session:
+            selected_task = session.query(UserBaseTaskDB).filter_by(id=selected_pk).first()
 
-        if selected_index is not None:
-            selected_task = tasks[selected_index]
-            st.success(f"✅ Selected Task: {selected_task.name} (ID: {selected_task.base_task_id})")
-
-            col1, col2 = st.columns(2)
-
-            # 🔁 DUPLICATE
-            with col1:
-                with st.expander("🔁 Duplicate Task"):
-                    with st.form(f"duplicate_form_{selected_task.id}", clear_on_submit=True):
-                        new_id = st.text_input("Enter new valid Base Task ID (must be unique)")
-                        new_name = st.text_input("Enter new Task Name (must differ)")
-                        submitted = st.form_submit_button("Duplicate Task")
-
-                        if submitted:
-                            if not new_id or not new_name:
-                                st.error("❌ Please fill all fields.")
-                            else:
-                                with SessionLocal() as session:
-                                    id_exists = session.query(
-                                        exists().where(UserBaseTaskDB.base_task_id == new_id)
-                                    ).scalar()
-
-                                    if id_exists:
-                                        st.error("⚠️ This Base Task ID already exists.")
-                                    else:
-                                        try:
-                                            # ✅ Deep copy equipment dict safely
-                                            import copy
-                                            new_task = UserBaseTaskDB(
-                                                user_id=user_id,
-                                                base_task_id=new_id,
-                                                name=new_name,
-                                                discipline=selected_task.discipline,
-                                                sub_discipline=selected_task.sub_discipline,
-                                                resource_type=selected_task.resource_type,
-                                                base_duration=selected_task.base_duration,
-                                                min_crews_needed=selected_task.min_crews_needed,
-                                                min_equipment_needed=copy.deepcopy(selected_task.min_equipment_needed),
-                                                predecessors=selected_task.predecessors,
-                                                cross_floor_dependencies=selected_task.cross_floor_dependencies,
-                                                created_by_user=True,
-                                                creator_id=user_id,
-                                            )
-                                            session.add(new_task)
-                                            session.commit()
-                                            st.success(f"✅ Task duplicated successfully as '{new_name}' ({new_id})")
-                                            st.rerun()
-                                        except Exception as e:
-                                            session.rollback()
-                                            logger.error(f"Duplication failed: {e}")
-                                            st.error(f"Error duplicating task: {e}")
-
-            # ❌ DELETE
-            with col2:
-                if st.button("🗑️ Delete Task"):
-                    with SessionLocal() as session:
-                        try:
-                            session.delete(selected_task)
-                            session.commit()
-                            st.warning(f"🗑️ Task '{selected_task.name}' deleted.")
-                            st.rerun()
-                        except Exception as e:
-                            session.rollback()
-                            logger.error(f"Delete failed: {e}")
-                            st.error(f"Error deleting task: {e}")
-
-        # Show the main table below
-        st.dataframe(df, use_container_width=True, hide_index=True)
-
-    except Exception as e:
-        logger.error(f"❌ Failed to display tasks: {e}")
-        st.error(f"Error loading tasks: {e}")
+        col1, col2, col3, col4 = st.columns([1,1,1,2], gap="small")
+        with col1:
+            if st.button("✏️ Edit", key=f"edit_btn_{selected_pk}", width="stretch"):
+                st.session_state["editing_task_id"] = selected_pk
+                st.session_state["creating_new_task"] = False
+                st.experimental_rerun()
+        with col2:
+            if st.button("📋 Duplicate", key=f"dup_btn_{selected_pk}", width="stretch"):
+                # open duplicate form inline below (see show_task_management_interface)
+                st.session_state["duplicate_requested_for"] = selected_pk
+                st.experimental_rerun()
+        with col3:
+            if st.button("🗑️ Delete", key=f"del_btn_{selected_pk}", width="stretch"):
+                # two-step confirm
+                confirm_key = f"confirm_del_{selected_pk}"
+                if st.session_state.get(confirm_key):
+                    ok = delete_task(selected_pk, user_id)
+                    st.session_state.pop(confirm_key, None)
+                    if ok:
+                        st.success("✅ Task deleted")
+                        st.experimental_rerun()
+                    else:
+                        st.error("❌ Delete failed")
+                else:
+                    st.session_state[confirm_key] = True
+                    st.warning("Click Delete again to confirm")
+        with col4:
+            # Summary box for selected task
+            st.markdown(f"**Selected:** `{selected_task.name}` — Stable ID: `{getattr(selected_task, 'base_task_id', '')}`")
+            st.caption(f"{selected_task.discipline} / {selected_task.sub_discipline or '—'} • {selected_task.resource_type}")
 def show_empty_state(user_id, username, user_role):
     """Show empty state with import options - ENHANCED VERSION"""
     st.warning("🎯 No personal tasks found in your library.")
