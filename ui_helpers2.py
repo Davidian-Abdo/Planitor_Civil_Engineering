@@ -91,83 +91,135 @@ def reset_user_tasks_to_default(user_id: int, session, disciplines_to_reset: lis
 
     session.commit()
     return restored_count
-
-
 def show_task_management_interface(user_id, user_role):
     """
-    Full task management interface including search, filters, duplication,
-    task editor, and reset-to-defaults buttons.
+    Top-level management UI for task management.
+    - search + discipline filtering
+    - selection box + duplicate dialog (asks for new stable ID)
+    - reset to defaults (all or by discipline)
+    - preserves task editing interface
     """
-    col1, col2, col3, col4, col5, col6 = st.columns([3, 1, 1, 1, 2, 1])
 
+    # Ensure rerun trigger exists
+    if "rerun_trigger" not in st.session_state:
+        st.session_state["rerun_trigger"] = False
+
+    # Top action bar
+    col1, col2, col3, col4, col5, col6 = st.columns([3, 2, 1, 1.5, 1, 1])
+
+    # Search box
     with col1:
-        search_term = st.text_input("🔍 Search tasks...", placeholder="Search by name, discipline, or resource type", key="task_search")
+        search_term = st.text_input(
+            "🔍 Search tasks...", 
+            placeholder="Search by name, discipline, or resource type",
+            key="task_search"
+        )
 
+    # Discipline filter
     with col2:
-        discipline_filter = st.multiselect("Discipline", options=disciplines, default=[], key="task_discipline_filter")
+        discipline_filter = st.multiselect(
+            "Discipline",
+            options=disciplines,
+            default=[],
+            key="task_discipline_filter"
+        )
 
+    # New Task
     with col3:
-        if st.button("➕ New", width='stretch', help="Create new task"):
+        if st.button("➕ New", width="stretch", help="Create new task"):
             st.session_state["creating_new_task"] = True
             st.session_state["editing_task_id"] = None
-            st.experimental_rerun()
+            st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
 
+    # Reset all tasks
     with col4:
-        # Reset All / Selected discipline buttons
-        st.markdown("### ♻️ Reset User Task Library")
-        with SessionLocal() as session:
-            if st.button("Reset All Defaults", width='stretch', type="secondary"):
+        st.markdown("---")
+        st.subheader("♻️ Reset User Task Library")
+        if st.button("Reset All to Default Tasks", type="secondary", width="stretch"):
+            with SessionLocal() as session:
                 with st.spinner("🔄 Resetting all tasks to defaults..."):
-                    restored = reset_user_tasks_to_default(user_id, session)
-                    st.success(f"✅ Reset {restored} default tasks successfully!")
-                    st.session_state["user_tasks_used"] = False
-                    st.experimental_rerun()
-
-            if st.button("Reset Selected Discipline(s)", width='stretch', type="secondary"):
-                if not discipline_filter:
-                    st.warning("⚠️ Select at least one discipline to reset")
-                else:
-                    with st.spinner(f"🔄 Resetting tasks for {', '.join(discipline_filter)}..."):
-                        restored = reset_user_tasks_to_default(user_id, session, disciplines_to_reset=discipline_filter)
-                        st.success(f"✅ Reset {restored} tasks for selected discipline(s)!")
+                    try:
+                        restored = reset_user_tasks_to_default(user_id, session)
+                        st.success(f"✅ Reset {restored} default tasks successfully!")
                         st.session_state["user_tasks_used"] = False
-                        st.experimental_rerun()
+                        st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
+                    except Exception as e:
+                        st.error(f"❌ Reset failed: {e}")
 
+    # Reset by discipline
     with col5:
-        # Placeholder for task editor (if editing_task_id exists)
-        editing_task_id = st.session_state.get("editing_task_id")
-        if editing_task_id:
-            display_task_editor(editing_task_id, user_id)
+        if st.button("Reset Selected Discipline(s)", type="secondary", width="stretch"):
+            if not discipline_filter:
+                st.warning("⚠️ Select at least one discipline to reset.")
+            else:
+                with SessionLocal() as session:
+                    with st.spinner("🔄 Resetting selected discipline(s)..."):
+                        try:
+                            restored = reset_user_tasks_to_default(
+                                user_id, session, disciplines_to_reset=discipline_filter
+                            )
+                            st.success(f"✅ Reset {restored} task(s) for selected discipline(s).")
+                            st.session_state["user_tasks_used"] = False
+                            st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
+                        except Exception as e:
+                            st.error(f"❌ Reset by discipline failed: {e}")
 
+    # User Task Count
     with col6:
         task_count = get_user_task_count(user_id)
         st.metric("Your Tasks", task_count)
 
-    # Load filtered tasks
+    # ------------------- Task Editor -------------------
+    # Render task editor if editing
+    if st.session_state.get("editing_task_id"):
+        display_task_editor(st.session_state["editing_task_id"], user_id)
+
+    # ------------------- Load and Display Tasks -------------------
     tasks = get_user_tasks_with_filters(user_id, search_term, discipline_filter)
+
     if not tasks:
         st.info("🔍 No tasks match your search criteria. Try different filters or create a new task.")
     else:
+        # Normalize fields before display
+        for t in tasks:
+            if t.min_crews_needed is None:
+                t.min_crews_needed = 1
+            if t.min_equipment_needed is None:
+                t.min_equipment_needed = {}
+
         display_task_table(tasks, user_id)
 
-    # Handle task duplication
+    # ------------------- Duplicate Task Handling -------------------
     dup_for = st.session_state.get("duplicate_requested_for")
     if dup_for:
         with SessionLocal() as session:
             original = session.query(UserBaseTaskDB).filter_by(id=dup_for, user_id=user_id).first()
+
         if original:
             st.markdown("---")
             st.subheader(f"📋 Duplicate Task: {original.name}")
             with st.form(f"duplicate_form_{dup_for}"):
-                new_stable_id = st.text_input("New Stable Task ID (alphanumeric, -, _ allowed)", key=f"dup_id_{dup_for}")
-                new_name = st.text_input("New Name (optional)", value=f"{original.name} (Copy)", key=f"dup_name_{dup_for}")
+                new_stable_id = st.text_input(
+                    "New Stable Task ID (alphanumeric, -, _ allowed)",
+                    key=f"dup_id_{dup_for}"
+                )
+                new_name = st.text_input(
+                    "New Name (optional)",
+                    value=f"{original.name} (Copy)",
+                    key=f"dup_name_{dup_for}"
+                )
                 submit = st.form_submit_button("Duplicate", use_container_width=True)
                 if submit:
-                    ok = duplicate_task_backend(original_task=original, user_id=user_id, new_stable_id=new_stable_id, modifications={"name": new_name})
+                    ok = duplicate_task_backend(
+                        original_task=original,
+                        user_id=user_id,
+                        new_stable_id=new_stable_id,
+                        modifications={"name": new_name}
+                    )
                     if ok:
                         st.success(f"✅ Task duplicated as {new_stable_id}")
                         st.session_state.pop("duplicate_requested_for", None)
-                        st.experimental_rerun()
+                        st.session_state["rerun_trigger"] = not st.session_state.get("rerun_trigger", False)
                     else:
                         st.error("❌ Could not duplicate task (see logs).")
         else:
