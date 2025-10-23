@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 from backend.database import SessionLocal
+import json
+from sqlalchemy import exists
 from backend.db_models import UserBaseTaskDB
 from defaults import BASE_TASKS,workers,equipment, disciplines
 from backend.database_operations import (
