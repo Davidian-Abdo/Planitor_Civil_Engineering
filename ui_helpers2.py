@@ -40,6 +40,90 @@ def enhanced_task_management():
     # User has tasks - show full management interface
     show_task_management_interface(current_user_id, user_role)
 
+def reset_user_tasks_to_default(user_id: int, session):
+    """
+    Reset user's task library to default safely, without breaking unique constraints.
+    - Updates existing defaults instead of duplicating them.
+    - Handles JSON and tuple keys in min_equipment_needed.
+    """
+    try:
+        logger.info(f"🔄 Resetting tasks for user {user_id} to defaults...")
+
+        inserted, updated = 0, 0
+
+        for discipline, tasks in BASE_TASKS.items():
+            for t in tasks:
+                # Prepare JSON-safe equipment field
+                safe_equipment = {}
+                for k, v in t.get("min_equipment_needed", {}).items():
+                    key = json.dumps(k) if isinstance(k, (tuple, list)) else str(k)
+                    safe_equipment[key] = v
+
+                existing_task = session.query(UserBaseTaskDB).filter(
+                    and_(
+                        UserBaseTaskDB.user_id == user_id,
+                        UserBaseTaskDB.name == t["name"],
+                        UserBaseTaskDB.discipline == discipline,
+                        UserBaseTaskDB.sub_discipline == t.get("sub_discipline")
+                    )
+                ).first()
+
+                if existing_task:
+                    # ✅ Update existing task
+                    existing_task.base_task_id = t.get("id")
+                    existing_task.resource_type = t.get("resource_type")
+                    existing_task.task_type = t.get("task_type")
+                    existing_task.base_duration = t.get("base_duration")
+                    existing_task.min_crews_needed = t.get("min_crews_needed", 0)
+                    existing_task.min_equipment_needed = json.dumps(safe_equipment)
+                    existing_task.predecessors = t.get("predecessors")
+                    existing_task.repeat_on_floor = t.get("repeat_on_floor", False)
+                    existing_task.delay = t.get("delay", 0)
+                    existing_task.cross_floor_dependencies = t.get("cross_floor_dependencies")
+                    existing_task.applies_to_floors = t.get("applies_to_floors")
+                    existing_task.max_duration = t.get("max_duration")
+                    existing_task.max_crews = t.get("max_crews")
+                    existing_task.included = True
+                    existing_task.updated_at = datetime.utcnow()
+                    updated += 1
+                else:
+                    # ✅ Insert new task
+                    new_task = UserBaseTaskDB(
+                        user_id=user_id,
+                        base_task_id=t.get("id"),
+                        name=t["name"],
+                        discipline=discipline,
+                        sub_discipline=t.get("sub_discipline"),
+                        resource_type=t.get("resource_type"),
+                        task_type=t.get("task_type"),
+                        base_duration=t.get("base_duration"),
+                        min_crews_needed=t.get("min_crews_needed", 0),
+                        min_equipment_needed=json.dumps(safe_equipment),
+                        predecessors=t.get("predecessors"),
+                        repeat_on_floor=t.get("repeat_on_floor", False),
+                        included=True,
+                        delay=t.get("delay", 0),
+                        cross_floor_dependencies=t.get("cross_floor_dependencies"),
+                        applies_to_floors=t.get("applies_to_floors"),
+                        max_duration=t.get("max_duration"),
+                        max_crews=t.get("max_crews"),
+                        created_by_user=False,
+                        creator_id=None,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow(),
+                    )
+                    session.add(new_task)
+                    inserted += 1
+
+        session.commit()
+        logger.info(f"✅ Reset complete: {inserted} inserted, {updated} updated")
+        return {"inserted": inserted, "updated": updated}
+
+    except Exception as e:
+        session.rollback()
+        logger.error(f"❌ Failed to reset tasks: {e}")
+        raise
+
 def reset_user_tasks_to_default(user_id: int, db_session: Session, disciplines_to_reset: list = None) -> int:
     """
     Reset user tasks to default tasks from BASE_TASKS.
@@ -103,12 +187,11 @@ def show_task_management_interface(user_id, user_role):
     - add / edit / duplicate / delete
     - reset defaults (all or discipline)
     - dynamic display table
-    - task editor integrated above table
     """
     st.markdown("## 🧭 Task Management")
 
     # === TOP TOOLBAR ===
-    col1, col2, col3, col4, col5, col6 = st.columns([3, 1, 1, 1, 1, 1])
+    col1, col2, col3, col4, col5, col6, col7 = st.columns([4,2.5, 1, 1, 1.5, 1.5, 1])
 
     with col1:
         search_term = st.text_input(
@@ -132,6 +215,16 @@ def show_task_management_interface(user_id, user_role):
             st.experimental_rerun()
 
     with col4:
+        if st.button("📥 Import Defaults", use_container_width=True, help="Import all default tasks into your library"):
+            with SessionLocal() as session:
+                copied = copy_default_tasks_to_user(user_id, session)
+            if copied:
+                st.success(f"✅ Imported {copied} default tasks.")
+            else:
+                st.info("No new default tasks were added (they may already exist).")
+            st.experimental_rerun()
+
+    with col5:
         # Reset all defaults
         if st.button("♻️ Reset ALL Tasks", use_container_width=True, help="Replace ALL user tasks with default tasks"):
             with SessionLocal() as session:
@@ -139,12 +232,11 @@ def show_task_management_interface(user_id, user_role):
                     try:
                         restored = reset_user_tasks_to_default(user_id, session)
                         st.success(f"✅ Reset {restored} default tasks successfully!")
-                        st.session_state["user_tasks_used"] = False
                         st.experimental_rerun()
                     except Exception as e:
                         st.error(f"❌ Reset failed: {e}")
 
-    with col5:
+    with col6:
         # Reset only for selected discipline(s)
         if st.button("♻️ Reset Selected Discipline", use_container_width=True, help="Reset tasks only for selected disciplines"):
             if not discipline_filter:
@@ -155,19 +247,18 @@ def show_task_management_interface(user_id, user_role):
                         try:
                             restored = reset_user_tasks_to_default(user_id, session, discipline_filter)
                             st.success(f"✅ Reset {restored} tasks for selected discipline(s)!")
-                            st.session_state["user_tasks_used"] = False
                             st.experimental_rerun()
                         except Exception as e:
                             st.error(f"❌ Reset by discipline failed: {e}")
 
-    with col6:
+    with col7:
         task_count = get_user_task_count(user_id)
         st.metric("📋 Your Tasks", task_count)
 
-    # === TASK EDITOR ===
+    # === CREATE / EDIT FORM ===
     if st.session_state.get("creating_new_task") or st.session_state.get("editing_task_id"):
-        display_task_editor(user_id)
-        return  # skip table rendering while editing/creating
+        show_task_editor(user_id)
+        return  # Do not show the table simultaneously
 
     # === LOAD & DISPLAY TABLE ===
     tasks = get_user_tasks_with_filters(user_id, search_term, discipline_filter)
@@ -213,6 +304,7 @@ def show_task_management_interface(user_id, user_role):
         else:
             st.error("Original task not found (it may have been deleted).")
             st.session_state.pop("duplicate_requested_for", None)
+
 def _normalize_equipment_dict(equip):
     """
     Ensure equipment dict is JSON-serializable: convert tuple keys -> joined strings,
