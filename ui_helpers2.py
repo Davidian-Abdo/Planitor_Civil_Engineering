@@ -48,7 +48,7 @@ def reset_user_tasks_to_defaults(user_id):
                 if base_task.id not in existing_ids:
                     new_task = UserBaseTaskDB(
                         user_id=user_id,
-                        task_id=base_task.id,
+                        base_task_id=base_task.id,
                         name=base_task.name,
                         discipline=base_task.discipline,
                         sub_discipline=base_task.sub_discipline,
@@ -87,7 +87,6 @@ def show_task_management_interface(user_id, user_role):
     with col4:
         if st.button("📥 Import", use_container_width=True, help="Import from templates"):
             show_import_template_modal(user_id)
-
     with col5:
         if st.button("🔄 Reset to Default Tasks", use_container_width=True):
             count = reset_user_tasks_to_defaults(user_id)
@@ -96,11 +95,15 @@ def show_task_management_interface(user_id, user_role):
             else:
                 st.info("All default tasks already exist in your library.")
             st.rerun()
-
     with col6:
         task_count = get_user_task_count(user_id)
         st.metric("Your Tasks", task_count)
 
+    # Task editor (create or edit)
+    if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
+        st.markdown("---")
+        with SessionLocal() as session:
+            display_task_editor(session, user_id)
     # Load and display tasks
     tasks = get_user_tasks_with_filters(user_id, search_term, discipline_filter)
 
@@ -111,95 +114,129 @@ def show_task_management_interface(user_id, user_role):
     # Display tasks table with actions
     display_task_table(tasks, user_id)
 
-    # Task editor (create or edit)
-    if st.session_state.get("editing_task_id") or st.session_state.get("creating_new_task"):
-        st.markdown("---")
+
+def safe_display_equipment(equipment_data):
+    """Convert equipment dict (possibly with tuple keys) into a readable string."""
+    if not equipment_data:
+        return "—"
+    try:
+        parts = []
+        for key, value in equipment_data.items():
+            if isinstance(key, tuple):
+                label = " or ".join(str(k) for k in key)
+            else:
+                label = str(key)
+            parts.append(f"{label}: {value}")
+        return "; ".join(parts)
+    except Exception:
+        return str(equipment_data)
+
+def display_task_table(user_id):
+    """Display user tasks with full management (duplicate/delete) and correct equipment display."""
+    try:
         with SessionLocal() as session:
-            display_task_editor(session, user_id)
+            tasks = (
+                session.query(UserBaseTaskDB)
+                .filter(UserBaseTaskDB.user_id == user_id)
+                .order_by(UserBaseTaskDB.discipline, UserBaseTaskDB.sub_discipline, UserBaseTaskDB.name)
+                .all()
+            )
 
+        if not tasks:
+            st.info("📭 No tasks found.")
+            return
 
-def display_task_table(tasks, user_id):
-    """Display tasks as a professional table with actions (supports duplication with base_task_id)"""
-    if not tasks:
-        st.info("📭 No tasks found matching your criteria.")
-        return
+        # Create DataFrame for display
+        df = pd.DataFrame([
+            {
+                "Task ID": t.base_task_id,
+                "Name": t.name,
+                "Discipline": t.discipline,
+                "Sub-Discipline": t.sub_discipline or "-",
+                "Resource Type": t.resource_type,
+                "Duration": t.base_duration or "—",
+                "Min Crews Needed": t.min_crews_needed or "—",
+                "Min Equipment Needed": safe_display_equipment(t.min_equipment_needed)
+            }
+            for t in tasks
+        ])
 
-    task_data = []
-    for task in tasks:
-        duration_display = f"⏱️ {task.base_duration}d" if task.base_duration else "🔄 Calculated"
-        task_data.append({
-            "ID": task.base_task_id,
-            "Name": task.name,
-            "Discipline": task.discipline,
-            "Resource": task.resource_type,
-            "Duration": duration_display,
-            "Crews": task.min_crews_needed,
-            "Equipment": len(task.min_equipment_needed) if task.min_equipment_needed else 0,
-            "Predecessors": len(task.predecessors or []),
-            "Cross-Floor": len(task.cross_floor_dependencies or [])
-        })
+        st.markdown("### 📋 Your Tasks")
+        selected_index = st.selectbox("Select a task to manage:", options=df.index, format_func=lambda i: f"{df.iloc[i]['Name']} ({df.iloc[i]['Task ID']})")
 
-    df = pd.DataFrame(task_data)
+        if selected_index is not None:
+            selected_task = tasks[selected_index]
+            st.success(f"✅ Selected Task: {selected_task.name} (ID: {selected_task.base_task_id})")
 
-    st.dataframe(
-        df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "ID": st.column_config.TextColumn("Task ID", width="small"),
-            "Name": st.column_config.TextColumn("Task Name", width="large"),
-            "Discipline": st.column_config.TextColumn("Discipline", width="medium"),
-            "Resource": st.column_config.TextColumn("Resource", width="medium"),
-            "Duration": st.column_config.TextColumn("Duration", width="small"),
-            "Crews": st.column_config.NumberColumn("Crews", width="small"),
-            "Equipment": st.column_config.NumberColumn("Equipment", width="small"),
-            "Predecessors": st.column_config.NumberColumn("Predecessors", width="small"),
-            "Cross-Floor": st.column_config.NumberColumn("Cross-Floor", width="small"),
-        }
-    )
+            col1, col2 = st.columns(2)
 
-    st.markdown("### 🛠️ Quick Actions")
-    for task in tasks:
-        with st.expander(f"Actions for '{task.name}'"):
-            st.write(f"**ID:** {task.base_task_id}")
-            col1, col2, col3 = st.columns(3)
-            
+            # 🔁 DUPLICATE
             with col1:
-                if st.button("✏️ Edit", key=f"edit_{task.base_task_id}", use_container_width=True):
-                    st.session_state["editing_task_id"] = task.id
-                    st.session_state["creating_new_task"] = False
-                    st.rerun()
-            with col2:
-                with st.form(f"duplicate_form_{task.base_task_id}"):
-                    new_base_task_id = st.text_input("New Task ID (unique & alphanumeric)", key=f"dup_id_{task.base_task_id}")
-                    new_name = st.text_input("Optional new task name", f"{task.name} (Copy)", key=f"dup_name_{task.base_task_id}")
-                    submit = st.form_submit_button("Duplicate")
-                    if submit:
-                        if not new_base_task_id:
-                            st.error("Please enter a new Task ID")
-                        else:
-                            success = duplicate_task(
-                                original_task=task,
-                                user_id=user_id,
-                                new_base_task_id=new_base_task_id,
-                                modifications={"name": new_name}
-                            )
-                            if success:
-                                st.success(f"✅ Task duplicated as '{new_base_task_id}'")
-                                st.rerun()
+                with st.expander("🔁 Duplicate Task"):
+                    with st.form(f"duplicate_form_{selected_task.id}", clear_on_submit=True):
+                        new_id = st.text_input("Enter new valid Base Task ID (must be unique)")
+                        new_name = st.text_input("Enter new Task Name (must differ)")
+                        submitted = st.form_submit_button("Duplicate Task")
+
+                        if submitted:
+                            if not new_id or not new_name:
+                                st.error("❌ Please fill all fields.")
                             else:
-                                st.error("❌ Failed to duplicate task")
-            with col3:
-                if st.button("🗑️ Delete", key=f"delete_{task.base_task_id}", use_container_width=True):
-                    if st.session_state.get(f"confirm_delete_{task.base_task_id}"):
-                        if delete_task(task.id, user_id):
-                            st.success("✅ Task deleted!")
+                                with SessionLocal() as session:
+                                    id_exists = session.query(
+                                        exists().where(UserBaseTaskDB.base_task_id == new_id)
+                                    ).scalar()
+
+                                    if id_exists:
+                                        st.error("⚠️ This Base Task ID already exists.")
+                                    else:
+                                        try:
+                                            # ✅ Deep copy equipment dict safely
+                                            import copy
+                                            new_task = UserBaseTaskDB(
+                                                user_id=user_id,
+                                                base_task_id=new_id,
+                                                name=new_name,
+                                                discipline=selected_task.discipline,
+                                                sub_discipline=selected_task.sub_discipline,
+                                                resource_type=selected_task.resource_type,
+                                                base_duration=selected_task.base_duration,
+                                                min_crews_needed=selected_task.min_crews_needed,
+                                                min_equipment_needed=copy.deepcopy(selected_task.min_equipment_needed),
+                                                predecessors=selected_task.predecessors,
+                                                cross_floor_dependencies=selected_task.cross_floor_dependencies,
+                                                created_by_user=True,
+                                                creator_id=user_id,
+                                            )
+                                            session.add(new_task)
+                                            session.commit()
+                                            st.success(f"✅ Task duplicated successfully as '{new_name}' ({new_id})")
+                                            st.rerun()
+                                        except Exception as e:
+                                            session.rollback()
+                                            logger.error(f"Duplication failed: {e}")
+                                            st.error(f"Error duplicating task: {e}")
+
+            # ❌ DELETE
+            with col2:
+                if st.button("🗑️ Delete Task"):
+                    with SessionLocal() as session:
+                        try:
+                            session.delete(selected_task)
+                            session.commit()
+                            st.warning(f"🗑️ Task '{selected_task.name}' deleted.")
                             st.rerun()
-                        else:
-                            st.error("❌ Failed to delete task")
-                    else:
-                        st.session_state[f"confirm_delete_{task.base_task_id}"] = True
-                        st.warning("Click again to confirm deletion")
+                        except Exception as e:
+                            session.rollback()
+                            logger.error(f"Delete failed: {e}")
+                            st.error(f"Error deleting task: {e}")
+
+        # Show the main table below
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+    except Exception as e:
+        logger.error(f"❌ Failed to display tasks: {e}")
+        st.error(f"Error loading tasks: {e}")
 def show_empty_state(user_id, username, user_role):
     """Show empty state with import options - ENHANCED VERSION"""
     st.warning("🎯 No personal tasks found in your library.")
