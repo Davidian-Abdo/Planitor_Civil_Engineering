@@ -131,17 +131,9 @@ def safe_display_equipment(equipment_data):
     except Exception:
         return str(equipment_data)
 
-def display_task_table(user_id):
+def display_task_table(tasks,user_id):
     """Display user tasks with full management (duplicate/delete) and correct equipment display."""
     try:
-        with SessionLocal() as session:
-            tasks = (
-                session.query(UserBaseTaskDB)
-                .filter(UserBaseTaskDB.user_id == user_id)
-                .order_by(UserBaseTaskDB.discipline, UserBaseTaskDB.sub_discipline, UserBaseTaskDB.name)
-                .all()
-            )
-
         if not tasks:
             st.info("📭 No tasks found.")
             return
