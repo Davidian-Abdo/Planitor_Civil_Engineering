@@ -55,8 +55,6 @@ def reset_user_tasks_to_default(user_id: int, session, disciplines_to_reset: lis
         if disciplines_to_reset and discipline not in disciplines_to_reset:
             continue
         for t in tasks_list:
-            if not isinstance(t, BaseTask):
-                continue
             # Unique key check
             key = (t.name, t.discipline, t.sub_discipline)
             if key in existing_keys:
