@@ -40,7 +40,6 @@ def enhanced_task_management():
     # User has tasks - show full management interface
     show_task_management_interface(current_user_id, user_role)
 
-
 def reset_user_tasks_to_default(user_id: int, db_session: Session, disciplines_to_reset: list = None) -> int:
     """
     Reset user tasks to default tasks from BASE_TASKS.
@@ -52,44 +51,41 @@ def reset_user_tasks_to_default(user_id: int, db_session: Session, disciplines_t
     """
     restored_count = 0
 
-    # 1️⃣ Determine which tasks to delete first
+    # Delete existing tasks first
     query = db_session.query(UserBaseTaskDB).filter(UserBaseTaskDB.user_id == user_id)
     if disciplines_to_reset:
         query = query.filter(UserBaseTaskDB.discipline.in_(disciplines_to_reset))
-
-    # Delete existing tasks in that scope
-    existing_tasks_count = query.count()
-    if existing_tasks_count:
+    if query.count():
         query.delete(synchronize_session=False)
         db_session.commit()
 
-    # 2️⃣ Insert default tasks
     now = datetime.utcnow()
+
+    # Insert default tasks
     for discipline, tasks_list in BASE_TASKS.items():
-        # Skip if discipline not in filter (for selective reset)
         if disciplines_to_reset and discipline not in disciplines_to_reset:
             continue
 
         for t in tasks_list:
             db_task = UserBaseTaskDB(
-                base_task_id=t.get("base_task_id"),
+                base_task_id=t.id,
                 user_id=user_id,
-                name=t.get("name"),
-                discipline=t.get("discipline"),
-                sub_discipline=t.get("sub_discipline"),
-                resource_type=t.get("resource_type"),
-                task_type=t.get("task_type"),
-                base_duration=t.get("base_duration"),
-                min_crews_needed=t.get("min_crews_needed"),
-                min_equipment_needed=t.get("min_equipment_needed"),
-                predecessors=t.get("predecessors"),
-                repeat_on_floor=t.get("repeat_on_floor", False),
+                name=t.name,
+                discipline=t.discipline,
+                sub_discipline=t.sub_discipline,
+                resource_type=t.resource_type,
+                task_type=t.task_type,
+                base_duration=t.base_duration,
+                min_crews_needed=t.min_crews_needed,
+                min_equipment_needed=t.min_equipment_needed,
+                predecessors=t.predecessors,
+                repeat_on_floor=getattr(t, "repeat_on_floor", False),
                 included=True,
-                delay=t.get("delay", 0),
-                cross_floor_dependencies=t.get("cross_floor_dependencies"),
-                applies_to_floors=t.get("applies_to_floors", "auto"),
-                max_duration=t.get("max_duration", 365),
-                max_crews=t.get("max_crews", 50),
+                delay=getattr(t, "delay", 0),
+                cross_floor_dependencies=getattr(t, "cross_floor_dependencies", []),
+                applies_to_floors=getattr(t, "applies_to_floors", "auto"),
+                max_duration=getattr(t, "max_duration", 365),
+                max_crews=getattr(t, "max_crews", 50),
                 created_by_user=False,
                 creator_id=None,
                 created_at=now,
