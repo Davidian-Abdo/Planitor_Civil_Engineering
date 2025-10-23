@@ -5,6 +5,7 @@ import json
 import logging
 from datetime import datetime
 from sqlalchemy import exists
+from sqlalchemy.orm import Session
 from backend.db_models import UserBaseTaskDB
 from defaults import BASE_TASKS,workers,equipment, disciplines
 from backend.database_operations import (
@@ -39,74 +40,66 @@ def enhanced_task_management():
     # User has tasks - show full management interface
     show_task_management_interface(current_user_id, user_role)
 
-def reset_user_tasks_to_defaults(user_id: int, session, discipline: str = None):
+
+def reset_user_tasks_to_default(user_id: int, db_session: Session, disciplines_to_reset: list = None) -> int:
     """
-    Reset the user's task library to exactly match BASE_TASKS.
-    If a discipline is specified, only that one is reset.
+    Reset user tasks to default tasks from BASE_TASKS.
+
+    :param user_id: ID of the user
+    :param db_session: SQLAlchemy session
+    :param disciplines_to_reset: Optional list of disciplines to reset, defaults to all
+    :return: Number of tasks restored
     """
-    from defaults import BASE_TASKS  # import locally to avoid circular imports
+    restored_count = 0
 
-    try:
-        logger.info(f"🔄 Resetting tasks for user {user_id} | Discipline: {discipline or 'ALL'}")
+    # 1️⃣ Determine which tasks to delete first
+    query = db_session.query(UserBaseTaskDB).filter(UserBaseTaskDB.user_id == user_id)
+    if disciplines_to_reset:
+        query = query.filter(UserBaseTaskDB.discipline.in_(disciplines_to_reset))
 
-        # 1️⃣ Determine which disciplines to reset
-        target_disciplines = [discipline] if discipline else list(BASE_TASKS.keys())
+    # Delete existing tasks in that scope
+    existing_tasks_count = query.count()
+    if existing_tasks_count:
+        query.delete(synchronize_session=False)
+        db_session.commit()
 
-        # 2️⃣ Delete existing user tasks in those disciplines
-        session.query(UserBaseTaskDB).filter(
-            and_(
-                UserBaseTaskDB.user_id == user_id,
-                UserBaseTaskDB.discipline.in_(target_disciplines)
+    # 2️⃣ Insert default tasks
+    now = datetime.utcnow()
+    for discipline, tasks_list in BASE_TASKS.items():
+        # Skip if discipline not in filter (for selective reset)
+        if disciplines_to_reset and discipline not in disciplines_to_reset:
+            continue
+
+        for t in tasks_list:
+            db_task = UserBaseTaskDB(
+                base_task_id=t.get("base_task_id"),
+                user_id=user_id,
+                name=t.get("name"),
+                discipline=t.get("discipline"),
+                sub_discipline=t.get("sub_discipline"),
+                resource_type=t.get("resource_type"),
+                task_type=t.get("task_type"),
+                base_duration=t.get("base_duration"),
+                min_crews_needed=t.get("min_crews_needed"),
+                min_equipment_needed=t.get("min_equipment_needed"),
+                predecessors=t.get("predecessors"),
+                repeat_on_floor=t.get("repeat_on_floor", False),
+                included=True,
+                delay=t.get("delay", 0),
+                cross_floor_dependencies=t.get("cross_floor_dependencies"),
+                applies_to_floors=t.get("applies_to_floors", "auto"),
+                max_duration=t.get("max_duration", 365),
+                max_crews=t.get("max_crews", 50),
+                created_by_user=False,
+                creator_id=None,
+                created_at=now,
+                updated_at=now
             )
-        ).delete(synchronize_session=False)
-        logger.info(f"🗑️ Deleted old user tasks in {target_disciplines}")
+            db_session.add(db_task)
+            restored_count += 1
 
-        # 3️⃣ Reinsert the default tasks for the selected disciplines
-        inserted_count = 0
-        for disc in target_disciplines:
-            tasks = BASE_TASKS.get(disc, [])
-            for t in tasks:
-                # Prepare min_equipment_needed JSON safely
-                safe_equipment = {}
-                for k, v in t.get("min_equipment_needed", {}).items():
-                    key = json.dumps(k) if isinstance(k, (tuple, list)) else str(k)
-                    safe_equipment[key] = v
-
-                new_task = UserBaseTaskDB(
-                    user_id=user_id,
-                    base_task_id=t.get("id"),
-                    name=t.get("name"),
-                    discipline=disc,
-                    sub_discipline=t.get("sub_discipline"),
-                    resource_type=t.get("resource_type"),
-                    task_type=t.get("task_type"),
-                    base_duration=t.get("base_duration"),
-                    min_crews_needed=t.get("min_crews_needed", 0),
-                    min_equipment_needed=json.dumps(safe_equipment),
-                    predecessors=t.get("predecessors"),
-                    repeat_on_floor=t.get("repeat_on_floor", False),
-                    included=True,
-                    delay=t.get("delay", 0),
-                    cross_floor_dependencies=t.get("cross_floor_dependencies"),
-                    applies_to_floors=t.get("applies_to_floors"),
-                    max_duration=t.get("max_duration"),
-                    max_crews=t.get("max_crews"),
-                    created_by_user=False,
-                    creator_id=None,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow(),
-                )
-                session.add(new_task)
-                inserted_count += 1
-
-        session.commit()
-        logger.info(f"✅ Successfully reset {inserted_count} tasks for {target_disciplines}")
-        return {"status": "success", "inserted": inserted_count, "disciplines": target_disciplines}
-
-    except Exception as e:
-        session.rollback()
-        logger.error(f"❌ Reset failed: {e}")
-        return {"status": "error", "error": str(e)}
+    db_session.commit()
+    return restored_count
 def show_task_management_interface(user_id, user_role):
     """
     Full task management interface:
