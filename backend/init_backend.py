@@ -106,8 +106,8 @@ class BackendInitializer:
                 return False
             
             # Step 2: Database migrations
-            if not self._run_database_migrations():
-                return False
+            # if not self._run_database_migrations():
+               #  return False
                 
             # Step 3: Create tables
             if not self._create_database_tables():
