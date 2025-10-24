@@ -20,7 +20,7 @@ from ui_helpers import (
     organize_tasks_by_discipline
 )
 from utils.task_management_ui import enhanced_task_management
-from helpers import (
+from utils.scheduling_ui_helpers import (
     generate_quantity_template, generate_worker_template, 
     generate_equipment_template, parse_quantity_excel, 
     parse_worker_excel, parse_equipment_excel
