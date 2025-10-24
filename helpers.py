@@ -271,24 +271,6 @@ def Topo_order_tasks(tasks):
 
     return ordered_ids
 
-
-class ResourceAllocationList:
-    def __init__(self):
-        self.intervals = []  # sorted list of (start, end)
-
-    def is_free(self, start, end):
-        i = bisect.bisect_left(self.intervals, (start, end))
-        if i > 0 and self.intervals[i-1][1] > start:
-            return False
-        if i < len(self.intervals) and self.intervals[i][0] < end:
-            return False
-        return True
-
-    def add(self, start, end):
-        bisect.insort(self.intervals, (start, end))
-
-
-
 def get_floor_range_hybrid(base_task, max_floor, ground_disciplines):
     """
     Hybrid floor range: User configuration takes priority, 
