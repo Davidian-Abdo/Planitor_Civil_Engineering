@@ -358,7 +358,7 @@ class ApplicationInitializer:
                 
                 with st.spinner("🚀 Initializing Construction Manager..."):
                     # Run emergency fixes if needed
-                    ApplicationInitializer._run_emergency_fixes()
+                    # -----ApplicationInitializer._run_emergency_fixes()
                     
                     # Initialize backend
                     success = init_backend()
