@@ -3,6 +3,7 @@ from typing import List, Dict, Tuple, Optional, Set
 import logging
 import pandas as pd
 
+from utils.resources import AdvancedResourceManager, EquipmentResourceManager
 
 
 
