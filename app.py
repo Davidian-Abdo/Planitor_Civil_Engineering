@@ -367,7 +367,7 @@ class ApplicationInitializer:
                     if not st.session_state.get("backend_initialized", False):
                     
                     # Initialize backend
-                    success = init_backend()                    
+                        success = init_backend()                    
                         if success:
                             st.session_state.backend_initialized = True
                             st.session_state.app_ready = True
