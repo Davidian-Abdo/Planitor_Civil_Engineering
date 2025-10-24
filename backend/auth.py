@@ -88,10 +88,8 @@ class AuthManager:
         """Secure logout with logging"""
         user_info = st.session_state.get("auth_user", {})
         username = user_info.get("username", "Unknown")
-        
         st.session_state.auth_user = None
-        st.session_state.last_activity = None
-        
+        st.session_state.last_activity = None 
         logger.info(f"User logged out: {username}")
 
     def _is_rate_limited(self, username: str, max_attempts: int = 5, window_minutes: int = 15) -> bool:
@@ -105,9 +103,7 @@ class AuthManager:
                     LoginAttemptDB.attempt_time >= cutoff_time,
                     LoginAttemptDB.successful == False
                 ).count()
-                
-                return attempt_count >= max_attempts
-                
+                return attempt_count >= max_attempts      
         except Exception as e:
             logger.error(f"Rate limit check failed for {username}: {e}")
             return False  # Fail open for availability
@@ -162,13 +158,10 @@ class AuthManager:
             self.logout()
             st.warning("🕒 Session timed out due to inactivity. Please log in again.")
             st.stop()
-
         # Update activity timestamp
         st.session_state.last_activity = datetime.now()
-
         # Check authorization based on access level
-        user_role = user.get("role", "viewer")
-        
+        user_role = user.get("role", "viewer")   
         role_permissions = {
             "admin": ["read", "write", "admin"],
             "manager": ["read", "write"],
@@ -192,11 +185,9 @@ class AuthManager:
     def is_authenticated(self) -> bool:
         """Check if user is authenticated without stopping execution"""
         user = st.session_state.get("auth_user")
-        last_activity = st.session_state.get("last_activity")
-        
+        last_activity = st.session_state.get("last_activity")   
         if not user or not last_activity:
-            return False
-            
+            return False     
         if datetime.now() - last_activity > timedelta(minutes=self.session_timeout_minutes):
             self.logout()
             return False
@@ -240,7 +231,6 @@ def hash_password(password: str) -> str:
         method='pbkdf2:sha256',
         salt_length=16
     )
-
 def verify_password(password: str, hashed_password: str) -> bool:
     """Verify password against hash"""
     try:
@@ -248,7 +238,6 @@ def verify_password(password: str, hashed_password: str) -> bool:
     except Exception as e:
         logger.error(f"Password verification error: {e}")
         return False
-
 def validate_password_strength(password: str) -> dict:
     """Validate password strength"""
     issues = []
@@ -266,10 +255,6 @@ def validate_password_strength(password: str) -> dict:
         "is_valid": len(issues) == 0,
         "issues": issues
     }
-
-# ------------------------- DATABASE MODEL FOR LOGIN ATTEMPTS -------------------------
-# Add this to your db_models.py or create here temporarily
-
 
 # ------------------------- GLOBAL INSTANCE -------------------------
 # Create global instance but require session for operations
