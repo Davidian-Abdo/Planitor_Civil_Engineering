@@ -10,7 +10,8 @@ from utils.resources import AdvancedResourceManager, EquipmentResourceManager
 from utils.calendar import AdvancedCalendar
 from utils.duration import DurationCalculator
 
-
+MAX_SCHEDULING_ATTEMPTS = 10000
+MAX_FORWARD_ATTEMPTS = 3000
 
 class AdvancedScheduler:
     """
