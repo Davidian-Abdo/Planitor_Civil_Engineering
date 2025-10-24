@@ -84,7 +84,7 @@ class DatabaseConfig:
         else:
             base_config.update({
                 "poolclass": QueuePool,
-                "pool_size": 5,
+                "pool_size": 20,
                 "max_overflow": 10,
                 "pool_timeout": 30,
                 "pool_recycle": 1800
