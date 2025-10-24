@@ -14,13 +14,13 @@ from backend.init_backend import check_backend_health
 
 # Core application imports
 from scheduling_engin import run_schedule, analyze_project_progress
-from ui_helpers import (
+from utils.scheduling_ui_helpers import (
     inject_ui_styles, create_metric_row, create_info_card,
     render_upload_section, render_discipline_zone_config, 
     organize_tasks_by_discipline
 )
 from utils.task_management_ui import enhanced_task_management
-from utils.scheduling_ui_helpers import (
+from utils.general_helpers import (
     generate_quantity_template, generate_worker_template, 
     generate_equipment_template, parse_quantity_excel, 
     parse_worker_excel, parse_equipment_excel
