@@ -5,7 +5,7 @@ Logging configuration for construction management app
 import logging
 import sys
 import os
-from pathlib import Path
+rom pathlib import Path
 
 def setup_logging(log_level=logging.INFO, log_file=None):
     """
