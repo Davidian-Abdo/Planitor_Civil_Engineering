@@ -27,10 +27,10 @@ from models import Task, BaseTask, WorkerResource, EquipmentResource
 from defaults import workers, equipment, BASE_TASKS, cross_floor_links, acceleration, SHIFT_CONFIG, disciplines
 
 # Helper imports
-from helpers import (
-    ResourceAllocationList, AdvancedResourceManager, EquipmentResourceManager,
+from helpers import (,
     Topo_order_tasks, generate_tasks, validate_tasks
 )
+from utils.resources import ResourceAllocationList, AdvancedResourceManager, EquipmentResourceManager
 
 # Configure logging
 logger = logging.getLogger(__name__)
