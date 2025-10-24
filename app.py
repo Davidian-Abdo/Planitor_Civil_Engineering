@@ -359,22 +359,27 @@ class ApplicationInitializer:
                 with st.spinner("🚀 Initializing Construction Manager..."):
                     # Run emergency fixes if needed
                     # -----ApplicationInitializer._run_emergency_fixes()
+
+
+
+
+
+                    if not st.session_state.get("backend_initialized", False):
                     
                     # Initialize backend
-                    success = init_backend()
+                    success = init_backend()                    
+                        if success:
+                            st.session_state.backend_initialized = True
+                            st.session_state.app_ready = True
+                            st.session_state.health_status = check_backend_health()
+                            logger.info("Application initialization completed")
+                        else:
+                            st.session_state.initialization_attempts = attempts + 1
+                            st.warning(f"Initialization attempt {attempts + 1} failed. Retrying...")
+                            time.sleep(AppConfig.INIT_RETRY_DELAY)
+                            st.rerun()
                     
-                    if success:
-                        st.session_state.backend_initialized = True
-                        st.session_state.app_ready = True
-                        st.session_state.health_status = check_backend_health()
-                        logger.info("Application initialization completed")
-                    else:
-                        st.session_state.initialization_attempts = attempts + 1
-                        st.warning(f"Initialization attempt {attempts + 1} failed. Retrying...")
-                        time.sleep(AppConfig.INIT_RETRY_DELAY)
-                        st.rerun()
-                    
-                    return success
+                        return success
             return True
             
         except Exception as e:
