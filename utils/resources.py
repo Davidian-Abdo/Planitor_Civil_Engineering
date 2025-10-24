@@ -8,6 +8,25 @@ from models import WorkerResource, EquipmentResource
 
 
 
+class ResourceAllocationList:
+    def __init__(self):
+        self.intervals = []  # sorted list of (start, end)
+
+    def is_free(self, start, end):
+        i = bisect.bisect_left(self.intervals, (start, end))
+        if i > 0 and self.intervals[i-1][1] > start:
+            return False
+        if i < len(self.intervals) and self.intervals[i][0] < end:
+            return False
+        return True
+
+    def add(self, start, end):
+        bisect.insort(self.intervals, (start, end))
+
+
+
+
+
 
 class AdvancedResourceManager:
     """
