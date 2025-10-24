@@ -1,6 +1,6 @@
 from .validators import validate_uploaded_file, validate_email
 from .logger import setup_logging, get_logger
-from .file_utils import safe_file_upload, generate_filename
+from .file_utils import safe_file_upload, generate_filename,
 
 __all__ = [
     "validate_uploaded_file", 
