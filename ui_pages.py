@@ -19,7 +19,7 @@ from ui_helpers import (
     render_upload_section, render_discipline_zone_config, 
     organize_tasks_by_discipline
 )
-from ui_helpers2 import enhanced_task_management
+from utils.task_management_ui import enhanced_task_management
 from helpers import (
     generate_quantity_template, generate_worker_template, 
     generate_equipment_template, parse_quantity_excel, 
