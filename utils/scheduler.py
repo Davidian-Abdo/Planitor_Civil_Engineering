@@ -1,3 +1,17 @@
+# ==== Standard Library ====
+from collections import deque
+from typing import List, Dict, Tuple, Optional, Set
+import logging
+import pandas as pd
+
+from models import Task,BaseTask, WorkerResource, EquipmentResource  # Data models representing entities
+
+from utils.resources import AdvancedResourceManager, EquipmentResourceManager
+from utils.calendar import AdvancedCalendar
+from utils.duration import DurationCalculator
+
+
+
 class AdvancedScheduler:
     """
     Advanced construction scheduler with resource constraints and optimization.
